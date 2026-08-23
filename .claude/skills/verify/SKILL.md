@@ -17,7 +17,12 @@ This is a browser-based PWA (React + Vite). Verify by driving the real UI with P
   The service worker only runs in the **preview/build** server, never in `vite dev`.
 - **Prompt Restart + tap-to-jump (dev):** `node scripts/verify-prompt.mjs` → asserts Restart eases to
   top and pauses, tap-to-jump recenters a tapped line at ~40%, and a tap while controls are hidden only
-  reveals them (no jump). For responsive/mobile layout, drive Setup at 360×640 / 844×390 and assert the
+  reveals them (no jump).
+- **Smart Follow lab (dev):** `node scripts/verify-lab.mjs` → seeds a script, opens the hidden `#lab`
+  harness (reach via `window.location.hash='#lab'`; a `hashchange` listener switches views), types a
+  "spoken" phrase, and asserts the matched line eases to ~40% with high confidence, while a garbled
+  phrase does NOT move the position (false-jump resistance). Matcher/tokenizer/positionMap are pure and
+  covered by unit tests (`src/smartfollow/*.test.ts`). For responsive/mobile layout, drive Setup at 360×640 / 844×390 and assert the
   `button "Start Prompt"` bottom ≤ viewport height (it's pinned outside the `.overflow-y-auto` region).
 
 ## Drive the surface
