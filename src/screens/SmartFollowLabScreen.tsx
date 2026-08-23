@@ -8,7 +8,8 @@ import { FocusZone } from '../components/prompt/FocusZone'
 import { tokenizeScript, tokenizePhrase, type ScriptToken } from '../smartfollow/tokenizeScript'
 import { matchPosition, type MatchResult } from '../smartfollow/matcher'
 import { lineElementTarget } from '../smartfollow/positionMap'
-import { useSpeechRecognition } from '../smartfollow/useSpeechRecognition'
+import { useVosk } from '../smartfollow/useVosk'
+import { createVoskEngine, VOSK_MODELS } from '../smartfollow/stt/voskEngine'
 
 type Status = 'idle' | 'following' | 'finding' | 'paused'
 
@@ -84,13 +85,35 @@ export function SmartFollowLabScreen() {
 
   const feed = (text: string) => runMatch(tokenizePhrase(text))
 
-  const speech = useSpeechRecognition({
+  const vosk = useVosk({
     lang,
     onWords: (recent, full) => {
       setTranscript(full)
       runMatch(recent)
     },
   })
+
+  // Dev-only Vosk verification hook: load a model + feed a WAV (no mic). Used by scripts/verify-vosk.mjs.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(window as unknown as { __voskTest?: unknown }).__voskTest = async (
+      lang: string,
+      wavUrl: string,
+    ) => {
+      const eng = createVoskEngine()
+      const parts: string[] = []
+      eng.onFinal((r) => parts.push(r.text))
+      await eng.load(VOSK_MODELS[lang])
+      const ab = await (await fetch(wavUrl)).arrayBuffer()
+      const ctx = new AudioContext({ sampleRate: 16000 }) // match the Vosk model rate
+      const audio = await ctx.decodeAudioData(ab)
+      eng.feedFloat(audio.getChannelData(0), audio.sampleRate)
+      eng.feedFloat(new Float32Array(audio.sampleRate), audio.sampleRate) // 1s silence → flush final
+      await new Promise((r) => setTimeout(r, 2500))
+      eng.stop()
+      return parts.join(' ').trim()
+    }
+  }, [])
 
   // Repaint the diagnostic readout periodically.
   const [, forceTick] = useState(0)
@@ -99,7 +122,7 @@ export function SmartFollowLabScreen() {
     return () => clearInterval(id)
   }, [])
   const heardAgo =
-    speech.listening && lastHeardAtRef.current
+    vosk.listening && lastHeardAtRef.current
       ? `${((performance.now() - lastHeardAtRef.current) / 1000).toFixed(1)}s ago`
       : '—'
 
@@ -159,46 +182,46 @@ export function SmartFollowLabScreen() {
 
       {/* Diagnostics / drive panel */}
       <div className="shrink-0 space-y-3 border-t border-border px-5 py-4">
-        {/* Microphone (test-only browser speech) */}
+        {/* Microphone — on-device Vosk (offline, private, works in Safari) */}
         <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={speech.listening ? speech.stop : speech.start}
-            disabled={!speech.supported}
+            onClick={vosk.listening ? vosk.stop : vosk.start}
+            disabled={vosk.loading}
             className={
-              speech.listening
+              vosk.listening
                 ? 'rounded-lg bg-fg px-4 py-2 text-sm font-medium text-bg'
                 : 'rounded-lg border border-fg-muted px-4 py-2 text-sm font-medium text-fg disabled:cursor-not-allowed disabled:opacity-40'
             }
           >
-            {speech.listening ? '■ Stop listening' : '🎙 Start listening'}
+            {vosk.loading
+              ? 'Loading model…'
+              : vosk.listening
+                ? '■ Stop listening'
+                : '🎙 Start listening'}
           </button>
           <select
             value={lang}
             onChange={(e) => setLang(e.target.value)}
+            disabled={vosk.listening || vosk.loading}
             aria-label="Recognition language"
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg"
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg disabled:opacity-50"
           >
             <option value="en-US">English</option>
             <option value="pl-PL">Polski</option>
           </select>
           <span className="text-xs text-fg-muted">
-            Test-only — browser cloud speech (Chrome/Edge). On-device engine comes next.
+            On-device (Vosk) — private, offline, no cloud. First start downloads a ~50MB model.
           </span>
         </div>
-        {!speech.supported && (
-          <p className="text-xs text-fg-muted">
-            This browser has no speech recognition — use Chrome or Edge (or type a phrase below).
-          </p>
-        )}
-        {speech.error && <p className="text-xs text-fg">{speech.error}</p>}
+        {vosk.error && <p className="text-xs text-fg">{vosk.error}</p>}
         {transcript && (
           <p className="text-xs text-fg-muted" data-testid="sf-transcript">
             heard: <span className="text-fg">“{transcript}”</span>
           </p>
         )}
-        {speech.listening && (
+        {vosk.listening && (
           <p className="text-xs text-fg-muted tabular-nums">
-            mic <span className="text-fg">running</span> · restarts {speech.restarts} · last heard{' '}
+            mic <span className="text-fg">running</span> · latency ~{vosk.latencyMs}ms · last heard{' '}
             {heardAgo}
           </p>
         )}
