@@ -159,6 +159,59 @@ describe('SmoothFollowEngine — glideTo (Restart / tap-to-jump)', () => {
   })
 })
 
+describe('SmoothFollowEngine — velocity-limited follow (gentle line-by-line)', () => {
+  it('eases to the target and settles (no snap on the first frame)', () => {
+    const e = new SmoothFollowEngine({ maxFollowSpeed: 320, followSmoothTime: 0.4 })
+    e.setContentMetrics(4000, 400)
+    e.setMode('follow')
+    e.setTargetPosition(60) // one line
+    e.tick(FRAME)
+    expect(e.position).toBeGreaterThan(0)
+    expect(e.position).toBeLessThan(30) // not an instant jump to 60
+    run(e, 2)
+    expect(Math.abs(e.position - 60)).toBeLessThan(1)
+  })
+
+  it('never exceeds the max follow speed, even for a large jump', () => {
+    const e = new SmoothFollowEngine({ maxFollowSpeed: 320, followSmoothTime: 0.4 })
+    e.setContentMetrics(4000, 400)
+    e.setMode('follow')
+    e.setTargetPosition(2000) // far away
+    let maxSeen = 0
+    for (let i = 0; i < 600; i++) {
+      const before = e.position
+      e.tick(FRAME)
+      maxSeen = Math.max(maxSeen, Math.abs(e.position - before) / FRAME)
+    }
+    expect(maxSeen).toBeLessThanOrEqual(320 * 1.06)
+  })
+
+  it('does not overshoot the target', () => {
+    const e = new SmoothFollowEngine({ maxFollowSpeed: 320, followSmoothTime: 0.4 })
+    e.setContentMetrics(4000, 400)
+    e.setMode('follow')
+    e.setTargetPosition(200)
+    for (let i = 0; i < 600; i++) {
+      e.tick(FRAME)
+      expect(e.position).toBeLessThanOrEqual(200 + 1e-6)
+    }
+  })
+
+  it('a one-line step reads as calm — settles in roughly 0.4–1.6s', () => {
+    const e = new SmoothFollowEngine({ maxFollowSpeed: 320, followSmoothTime: 0.4 })
+    e.setContentMetrics(4000, 400)
+    e.setMode('follow')
+    e.setTargetPosition(60)
+    let t = 0
+    while (Math.abs(e.position - 60) > 0.5 && t < 3) {
+      e.tick(FRAME)
+      t += FRAME
+    }
+    expect(t).toBeGreaterThan(0.35)
+    expect(t).toBeLessThan(1.6)
+  })
+})
+
 describe('SmoothFollowEngine — follow mode (Phase 2 seam)', () => {
   it('eases the position toward a target without overshooting', () => {
     const e = new SmoothFollowEngine({ tau: 0.3 })

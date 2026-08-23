@@ -4,6 +4,8 @@ interface PromptControlsProps {
   visible: boolean
   playing: boolean
   speedMultiplier: number
+  /** Show slower/faster + speed (manual mode). Hidden for Smart Follow, which has no speed. */
+  showSpeed?: boolean
   onRestart: () => void
   onSlower: () => void
   onPlayPause: () => void
@@ -20,6 +22,7 @@ export function PromptControls({
   visible,
   playing,
   speedMultiplier,
+  showSpeed = true,
   onRestart,
   onSlower,
   onPlayPause,
@@ -45,13 +48,15 @@ export function PromptControls({
           </svg>
         </button>
 
-        <button
-          className={cn(iconBtn, 'h-14 w-14 text-2xl')}
-          onClick={onSlower}
-          aria-label="Slower"
-        >
-          −
-        </button>
+        {showSpeed && (
+          <button
+            className={cn(iconBtn, 'h-14 w-14 text-2xl')}
+            onClick={onSlower}
+            aria-label="Slower"
+          >
+            −
+          </button>
+        )}
 
         <button
           className={cn(iconBtn, 'h-20 w-20')}
@@ -70,17 +75,21 @@ export function PromptControls({
           )}
         </button>
 
-        <button
-          className={cn(iconBtn, 'h-14 w-14 text-2xl')}
-          onClick={onFaster}
-          aria-label="Faster"
-        >
-          +
-        </button>
+        {showSpeed && (
+          <button
+            className={cn(iconBtn, 'h-14 w-14 text-2xl')}
+            onClick={onFaster}
+            aria-label="Faster"
+          >
+            +
+          </button>
+        )}
       </div>
-      <div className="mt-3 text-center text-xs tracking-wide text-fg-muted tabular-nums">
-        {speedMultiplier.toFixed(1)}×
-      </div>
+      {showSpeed && (
+        <div className="mt-3 text-center text-xs tracking-wide text-fg-muted tabular-nums">
+          {speedMultiplier.toFixed(1)}×
+        </div>
+      )}
     </div>
   )
 }

@@ -11,13 +11,17 @@ export function FocusZone({ readingMarker }: { readingMarker: boolean }) {
         aria-hidden
         className="pointer-events-none absolute inset-0 z-10"
         style={{
+          // Asymmetric on purpose: the fade above the reading point stays tight (past text recedes
+          // quickly), while below it the clear band extends and the fade is gentle — so the next
+          // 2–3 lines (and text after a pause gap) stay legible before you reach them.
           background:
             'linear-gradient(to bottom,' +
             ' var(--color-bg) 0%,' +
             ' color-mix(in srgb, var(--color-bg) 70%, transparent) 24%,' +
             ' transparent 37%,' +
-            ' transparent 46%,' +
-            ' color-mix(in srgb, var(--color-bg) 70%, transparent) 60%,' +
+            ' transparent 50%,' +
+            ' color-mix(in srgb, var(--color-bg) 28%, transparent) 64%,' +
+            ' color-mix(in srgb, var(--color-bg) 62%, transparent) 82%,' +
             ' var(--color-bg) 100%)',
         }}
       />

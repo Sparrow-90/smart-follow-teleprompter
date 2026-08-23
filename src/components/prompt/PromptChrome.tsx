@@ -3,10 +3,12 @@ import { cn } from '../ui/cn'
 interface PromptChromeProps {
   visible: boolean
   onExit: () => void
+  /** Smart Follow status shown top-right (null = nothing, e.g. manual mode). */
+  status?: string | null
 }
 
-/** Minimal top chrome for Prompt Mode: just Exit (top-left). No Smart Follow badge in Phase 1. */
-export function PromptChrome({ visible, onExit }: PromptChromeProps) {
+/** Minimal top chrome for Prompt Mode: Exit (top-left) + optional Smart Follow status (top-right). */
+export function PromptChrome({ visible, onExit, status }: PromptChromeProps) {
   return (
     <div
       className={cn(
@@ -23,6 +25,9 @@ export function PromptChrome({ visible, onExit }: PromptChromeProps) {
         </svg>
         Exit
       </button>
+      {status && (
+        <span className="text-xs font-medium tracking-wide text-fg-muted tabular-nums">{status}</span>
+      )}
     </div>
   )
 }

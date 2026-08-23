@@ -17,6 +17,9 @@ dev-dist
 # TypeScript incremental build info
 *.tsbuildinfo
 
+# On-device speech models (large; fetched via scripts/fetch-models.sh)
+public/models/
+
 # Editor / OS
 .vscode/*
 !.vscode/extensions.json
@@ -27,3 +30,6 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+
+# Local speech test clips (regenerate with macOS say)
+public/test-*.wav

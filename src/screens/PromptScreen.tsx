@@ -7,6 +7,7 @@ import { PromptText } from '../components/prompt/PromptText'
 import { FocusZone } from '../components/prompt/FocusZone'
 import { PromptControls } from '../components/prompt/PromptControls'
 import { PromptChrome } from '../components/prompt/PromptChrome'
+import { useSmartFollow } from '../smartfollow/useSmartFollow'
 
 const MIN_SPEED = 0.4
 const MAX_SPEED = 3.0
@@ -33,6 +34,26 @@ export function PromptScreen() {
 
   useWakeLock()
 
+  const sf = useSmartFollow({
+    doc: scriptDoc,
+    engine,
+    viewportRef,
+    lang: settings.language,
+    lineHeightPx: preset.fontSize * preset.lineHeight,
+    mirror: settings.mirror,
+  })
+  const [micFailed, setMicFailed] = useState(false)
+  useEffect(() => {
+    if (sf.error) setMicFailed(true)
+  }, [sf.error])
+  const usingSmartFollow = settings.smartFollow && !micFailed
+
+  // Refs so long-lived callbacks/effects see the latest without re-subscribing every render.
+  const sfRef = useRef(sf)
+  sfRef.current = sf
+  const usingSFRef = useRef(usingSmartFollow)
+  usingSFRef.current = usingSmartFollow
+
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Controls stay up while paused; auto-hide only while the text is moving.
@@ -52,11 +73,25 @@ export function PromptScreen() {
   }, [engine, scheduleHide])
 
   const togglePlay = useCallback(() => {
-    engine.toggle()
-    const now = engine.playing
-    setPlaying(now)
     setControlsVisible(true)
-    scheduleHide(now)
+    if (usingSFRef.current) {
+      // Smart Follow: play = start listening/following, pause = stop listening.
+      const s = sfRef.current
+      if (s.listening) {
+        s.stop()
+        setPlaying(false)
+        scheduleHide(false)
+      } else {
+        s.start()
+        setPlaying(true)
+        scheduleHide(true)
+      }
+    } else {
+      engine.toggle()
+      const now = engine.playing
+      setPlaying(now)
+      scheduleHide(now)
+    }
   }, [engine, scheduleHide])
 
   const changeSpeed = useCallback(
@@ -72,7 +107,8 @@ export function PromptScreen() {
   )
 
   const restart = useCallback(() => {
-    engine.pause()
+    if (usingSFRef.current) sfRef.current.stop()
+    else engine.pause()
     setPlaying(false)
     engine.glideTo(0) // eases smoothly back to the top
     setControlsVisible(true)
@@ -133,7 +169,13 @@ export function PromptScreen() {
   // Auto-pause when the app is backgrounded or the device rotates (PRD flow decision).
   useEffect(() => {
     const pause = () => {
-      if (engine.playing) {
+      if (usingSFRef.current) {
+        if (sfRef.current.listening) {
+          sfRef.current.stop()
+          setPlaying(false)
+          setControlsVisible(true)
+        }
+      } else if (engine.playing) {
         engine.pause()
         setPlaying(false)
         setControlsVisible(true)
@@ -205,6 +247,21 @@ export function PromptScreen() {
     }
   }
 
+  const sfStatusLabel =
+    settings.smartFollow && micFailed
+      ? 'Manual — mic unavailable'
+      : !usingSmartFollow
+        ? null
+        : sf.loading
+          ? 'Loading model…'
+          : !sf.listening
+            ? 'Smart Follow'
+            : sf.status === 'finding'
+              ? 'Finding your place…'
+              : sf.status === 'paused'
+                ? 'Smart Follow paused'
+                : '● Following'
+
   return (
     <div
       ref={viewportRef}
@@ -213,13 +270,20 @@ export function PromptScreen() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
     >
-      <PromptText doc={scriptDoc} preset={preset} mirror={settings.mirror} contentRef={contentRef} />
+      <PromptText
+        doc={scriptDoc}
+        preset={preset}
+        mirror={settings.mirror}
+        contentRef={contentRef}
+        wordIndices={usingSmartFollow}
+      />
       <FocusZone readingMarker={settings.readingMarker} />
-      <PromptChrome visible={controlsVisible} onExit={exit} />
+      <PromptChrome visible={controlsVisible} onExit={exit} status={sfStatusLabel} />
       <PromptControls
         visible={controlsVisible}
         playing={playing}
         speedMultiplier={speed}
+        showSpeed={!usingSmartFollow}
         onRestart={restart}
         onSlower={() => changeSpeed(-SPEED_STEP)}
         onPlayPause={togglePlay}

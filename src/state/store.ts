@@ -3,7 +3,7 @@ import { type ScriptDoc, emptyDoc } from '../model/document'
 import { type Settings, type Theme, defaultSettings } from '../model/settings'
 import { loadScript, saveScript, loadSettings, saveSettings } from '../persistence/storage'
 
-export type View = 'editor' | 'setup' | 'prompt'
+export type View = 'editor' | 'setup' | 'prompt' | 'lab'
 
 interface AppStore {
   view: View

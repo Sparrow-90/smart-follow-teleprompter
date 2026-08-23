@@ -14,6 +14,10 @@ export interface SmoothFollowOptions {
   baseSpeed?: number
   /** Velocity smoothing time constant in seconds (larger = gentler ease). */
   tau?: number
+  /** Max speed (px/sec) the follow motion may reach — caps big jumps so nothing snaps. */
+  maxFollowSpeed?: number
+  /** Approx settle time (sec) for the follow motion; larger = gentler/slower. */
+  followSmoothTime?: number
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
@@ -32,10 +36,14 @@ export class SmoothFollowEngine {
   private targetPosition = 0
   private gliding = false
   private glideTarget = 0
+  private maxFollowSpeed: number
+  private followSmoothTime: number
 
   constructor(opts: SmoothFollowOptions = {}) {
     this.baseSpeed = opts.baseSpeed ?? 55
     this.tau = opts.tau ?? 0.35
+    this.maxFollowSpeed = opts.maxFollowSpeed ?? 320
+    this.followSmoothTime = opts.followSmoothTime ?? 0.4
   }
 
   get playing(): boolean {
@@ -98,6 +106,34 @@ export class SmoothFollowEngine {
     return this.playingFlag && !this.scrubbing ? this.baseSpeed * this.speedMultiplier : 0
   }
 
+  /**
+   * Critically-damped move toward `target` with a max-speed cap (Unity-style SmoothDamp).
+   * Eases in and out, never overshoots, and never exceeds maxFollowSpeed. Updates this.velocity.
+   */
+  private smoothDampFollow(current: number, target: number, dt: number): number {
+    const smoothTime = Math.max(0.0001, this.followSmoothTime)
+    const omega = 2 / smoothTime
+    const x = omega * dt
+    const expFactor = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x)
+
+    let change = current - target
+    const originalTo = target
+    const maxChange = this.maxFollowSpeed * smoothTime
+    change = clamp(change, -maxChange, maxChange)
+    const clampedTarget = current - change
+
+    const temp = (this.velocity + omega * change) * dt
+    this.velocity = (this.velocity - omega * temp) * expFactor
+    let output = clampedTarget + (change + temp) * expFactor
+
+    // Guard against overshoot past the original target.
+    if (originalTo - current > 0 === output > originalTo) {
+      output = originalTo
+      this.velocity = (output - originalTo) / dt
+    }
+    return output
+  }
+
   tick(dt: number): void {
     if (dt <= 0) return
 
@@ -117,10 +153,10 @@ export class SmoothFollowEngine {
     }
 
     if (this.mode === 'follow') {
-      // Phase 2 path: ease the position itself toward the Smart Follow target.
-      this.position += (this.targetPosition - this.position) * alpha
+      // Smart Follow path: critically-damped move toward the target with a speed cap, so
+      // any distance (one line or several) glides gently and never snaps.
+      this.position = this.smoothDampFollow(this.position, this.targetPosition, dt)
       this.position = clamp(this.position, 0, this.maxPosition)
-      this.velocity = 0
       return
     }
 

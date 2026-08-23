@@ -1,6 +1,7 @@
-import { type RefObject } from 'react'
+import { type ReactNode, type RefObject } from 'react'
 import { type ScriptDoc, PAUSE_GLYPH } from '../../model/document'
 import type { PresetStyle } from '../../model/presets'
+import { normalizeWord } from '../../smartfollow/tokenizeScript'
 import { cn } from '../ui/cn'
 
 interface PromptTextProps {
@@ -8,6 +9,28 @@ interface PromptTextProps {
   preset: PresetStyle
   mirror: boolean
   contentRef: RefObject<HTMLDivElement>
+  /**
+   * When true, wrap each word in a `<span data-w={index}>` whose index matches
+   * tokenizeScript's global word index — so Smart Follow can target the matched word's
+   * exact visual line (works inside multi-sentence paragraphs). Off for Phase 1.
+   */
+  wordIndices?: boolean
+}
+
+/** Split a run's text into word spans (indexed) + whitespace, aligned to tokenizeScript. */
+function renderWords(text: string, counter: { i: number }): ReactNode[] {
+  return text.split(/(\s+)/).map((part, k) => {
+    if (part === '') return null
+    if (/^\s+$/.test(part)) return part
+    if (normalizeWord(part).length > 0) {
+      return (
+        <span key={k} data-w={counter.i++}>
+          {part}
+        </span>
+      )
+    }
+    return part // punctuation-only token — no index (tokenizeScript drops it too)
+  })
 }
 
 /**
@@ -15,7 +38,8 @@ interface PromptTextProps {
  * kept free of per-frame React state. Top/bottom padding lets the first line start at
  * the Focus Zone and the last line reach it.
  */
-export function PromptText({ doc, preset, mirror, contentRef }: PromptTextProps) {
+export function PromptText({ doc, preset, mirror, contentRef, wordIndices }: PromptTextProps) {
+  const counter = { i: 0 }
   return (
     <div
       ref={contentRef}
@@ -28,7 +52,7 @@ export function PromptText({ doc, preset, mirror, contentRef }: PromptTextProps)
         lineHeight: preset.lineHeight,
       }}
     >
-      <div className="mx-auto px-6" style={{ maxWidth: `${preset.columnWidth}px` }}>
+      <div data-prompter-column className="mx-auto px-6" style={{ maxWidth: `${preset.columnWidth}px` }}>
         {doc.blocks.map((block, i) => {
           if (block.type === 'pause') {
             return (
@@ -42,9 +66,10 @@ export function PromptText({ doc, preset, mirror, contentRef }: PromptTextProps)
               {block.runs.length === 0 ? (
                 <br />
               ) : (
-                block.runs.map((run, j) =>
-                  run.bold ? <strong key={j}>{run.text}</strong> : <span key={j}>{run.text}</span>,
-                )
+                block.runs.map((run, j) => {
+                  const content = wordIndices ? renderWords(run.text, counter) : run.text
+                  return run.bold ? <strong key={j}>{content}</strong> : <span key={j}>{content}</span>
+                })
               )}
             </p>
           )

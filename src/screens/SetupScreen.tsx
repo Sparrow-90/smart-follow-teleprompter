@@ -1,6 +1,6 @@
 import { useStore } from '../state/store'
 import { PRESETS, PRESET_ORDER } from '../model/presets'
-import type { Preset } from '../model/settings'
+import { LANGUAGE_LABELS, type Preset, type SttLanguage } from '../model/settings'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Toggle } from '../components/ui/Toggle'
 import { CtaButton } from '../components/ui/CtaButton'
@@ -48,11 +48,28 @@ export function SetupScreen() {
           <div className="divide-y divide-border border-y border-border">
             <Toggle
               label="Smart Follow"
-              checked={false}
-              disabled
-              hint="Coming soon"
-              onChange={() => {}}
+              checked={settings.smartFollow}
+              onChange={(smartFollow) => updateSettings({ smartFollow })}
             />
+            {settings.smartFollow && (
+              <div className="flex items-center justify-between py-3">
+                <span className="text-xs font-medium tracking-wide text-fg-muted uppercase">
+                  Language
+                </span>
+                <select
+                  value={settings.language}
+                  onChange={(e) => updateSettings({ language: e.target.value as SttLanguage })}
+                  aria-label="Smart Follow language"
+                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-fg"
+                >
+                  {(Object.keys(LANGUAGE_LABELS) as SttLanguage[]).map((code) => (
+                    <option key={code} value={code}>
+                      {LANGUAGE_LABELS[code]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <Toggle
               label="Mirror"
               checked={settings.mirror}
