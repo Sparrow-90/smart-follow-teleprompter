@@ -64,11 +64,11 @@ export function SmartFollowLabScreen() {
   const [lang, setLang] = useState('en-US')
   const [transcript, setTranscript] = useState('')
   const indexRef = useRef(0) // avoids stale currentIndex during continuous speech
-  const currentLineRef = useRef(-1) // the line currently placed in the Focus Zone
   const lastHeardAtRef = useRef(0)
 
-  // Gentle line-by-line: only step when the confidently-matched LINE changes; the engine's
-  // velocity-limited follow eases that one step. Holding on the same line keeps the text still.
+  // Follow the matched WORD's visual line — works inside multi-sentence paragraphs. Words on the
+  // same line share a top, so the text holds while you read across a line and eases gently to the
+  // next line as you move on (the engine's velocity-limited follow does the smoothing).
   const runMatch = (words: string[]) => {
     if (tokens.length === 0 || words.length === 0) return
     lastHeardAtRef.current = performance.now()
@@ -76,10 +76,8 @@ export function SmartFollowLabScreen() {
     setResult(res)
     if (res.confidence < 0.45) return // unsure — hold position
     indexRef.current = res.index
-    if (res.lineIndex === currentLineRef.current) return // already on this line
-    currentLineRef.current = res.lineIndex
-    const lines = viewportRef.current?.querySelectorAll('[data-prompter-line]')
-    const target = lineElementTarget(engine.position, lines?.[res.lineIndex], viewportRef.current)
+    const wordEl = viewportRef.current?.querySelector(`[data-w="${res.index}"]`)
+    const target = lineElementTarget(engine.position, wordEl, viewportRef.current)
     if (target != null) engine.setTargetPosition(target)
   }
 
@@ -129,7 +127,6 @@ export function SmartFollowLabScreen() {
   const reset = () => {
     setResult(null)
     indexRef.current = 0
-    currentLineRef.current = -1
     setTranscript('')
     engine.setTargetPosition(0)
   }
@@ -175,7 +172,13 @@ export function SmartFollowLabScreen() {
           data-testid="sf-viewport"
           className="relative min-h-0 flex-1 overflow-hidden"
         >
-          <PromptText doc={scriptDoc} preset={preset} mirror={false} contentRef={contentRef} />
+          <PromptText
+            doc={scriptDoc}
+            preset={preset}
+            mirror={false}
+            contentRef={contentRef}
+            wordIndices
+          />
           <FocusZone readingMarker />
         </div>
       )}
