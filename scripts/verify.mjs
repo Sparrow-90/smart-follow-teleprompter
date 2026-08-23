@@ -32,14 +32,21 @@ const editor = page.getByRole('textbox', { name: 'Script' })
 await editor.click()
 await editor.type('Something I want to tell, but what is the starting point\n')
 await editor.type('Now I can see it correctly\n')
-await page.getByRole('button', { name: 'Pause', exact: true }).click()
+await page.getByRole('button', { name: 'Insert pause' }).click()
 await editor.type('I hope this reads naturally')
-// bold "naturally": double-click selects the word
-await page.getByText('naturally', { exact: false }).last().dblclick()
+// bold "naturally" — the caret is already at the end of it, so walk the selection back
+// over the word with real keystrokes. (dblclick does NOT select inside this contentEditable
+// under headless Chromium, which is why this step used to pass without bolding anything.)
+await page.keyboard.down('Shift')
+for (let i = 0; i < 'naturally'.length; i++) await page.keyboard.press('ArrowLeft')
+await page.keyboard.up('Shift')
 await page.getByRole('button', { name: 'Bold selection' }).click()
 await sleep(400)
-const words = await page.getByText(/words$/).textContent()
-console.log('  word count label:', words)
+const boldPressed = await page
+  .getByRole('button', { name: 'Bold selection' })
+  .getAttribute('aria-pressed')
+const boldedText = await editor.locator('b, strong').allTextContents()
+console.log('  Bold button aria-pressed:', boldPressed, '| bolded runs:', boldedText)
 await shot('02-editor-filled')
 
 console.log('3. Continue -> Setup (landscape two-pane)')

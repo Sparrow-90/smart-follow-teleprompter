@@ -19,6 +19,8 @@ interface ScriptEditorProps {
   resetKey: number
   onChange: (doc: ScriptDoc) => void
   onEmptyChange: (empty: boolean) => void
+  /** Reports whether the caret/selection currently sits in bold text. */
+  onBoldStateChange?: (active: boolean) => void
 }
 
 const PAUSE_INSERT_HTML =
@@ -31,9 +33,42 @@ const PAUSE_INSERT_HTML =
  * actions (New / hydrate) replace the content.
  */
 export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
-  function ScriptEditor({ initialDoc, resetKey, onChange, onEmptyChange }, ref) {
+  function ScriptEditor(
+    { initialDoc, resetKey, onChange, onEmptyChange, onBoldStateChange },
+    ref,
+  ) {
     const editorRef = useRef<HTMLDivElement>(null)
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // Kept in a ref so the selectionchange listener below can stay mounted once.
+    const boldCallbackRef = useRef(onBoldStateChange)
+    useEffect(() => {
+      boldCallbackRef.current = onBoldStateChange
+    }, [onBoldStateChange])
+
+    /**
+     * Recompute the bold indicator — but only while the selection is inside the editor.
+     * We deliberately never clear it on blur: tapping a toolbar button moves focus to the
+     * header for a moment, and clearing there would make the B button flicker off mid-tap.
+     */
+    const reportBoldState = () => {
+      const el = editorRef.current
+      const cb = boldCallbackRef.current
+      if (!el || !cb) return
+      const sel = document.getSelection()
+      if (!sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) return
+      try {
+        cb(document.queryCommandState('bold'))
+      } catch {
+        // Some engines throw when there is no live selection — leave the last known state.
+      }
+    }
+
+    useEffect(() => {
+      document.addEventListener('selectionchange', reportBoldState)
+      return () => document.removeEventListener('selectionchange', reportBoldState)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const syncEmptyState = () => {
       const el = editorRef.current
@@ -49,6 +84,7 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
       if (!el) return
       el.innerHTML = isEmptyDoc(initialDoc) ? '' : docToHtml(initialDoc)
       syncEmptyState()
+      boldCallbackRef.current?.(false) // the old selection is gone with the old DOM
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [resetKey])
 
@@ -59,6 +95,7 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
         el.focus()
         document.execCommand('bold')
         flush()
+        reportBoldState()
       },
       insertPause() {
         const el = editorRef.current
@@ -81,6 +118,7 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
 
     const handleInput = () => {
       syncEmptyState()
+      reportBoldState()
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         const el = editorRef.current

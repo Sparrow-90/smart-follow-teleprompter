@@ -1,25 +1,25 @@
 import { useRef, useState } from 'react'
 import { useStore } from '../state/store'
-import { type ScriptDoc, isEmptyDoc, wordCount } from '../model/document'
+import { type ScriptDoc, isEmptyDoc } from '../model/document'
 import { ScriptEditor, type ScriptEditorHandle } from '../components/editor/ScriptEditor'
 import { EditorToolbar } from '../components/editor/EditorToolbar'
 import { CtaButton } from '../components/ui/CtaButton'
 
 export function EditorScreen() {
-  const scriptDoc = useStore((s) => s.scriptDoc)
   const setScriptDoc = useStore((s) => s.setScriptDoc)
   const clearScript = useStore((s) => s.clearScript)
   const goTo = useStore((s) => s.goTo)
 
   const editorRef = useRef<ScriptEditorHandle>(null)
   const [resetKey, setResetKey] = useState(0)
-  const [empty, setEmpty] = useState(isEmptyDoc(scriptDoc))
   const [undo, setUndo] = useState<ScriptDoc | null>(null)
+  const [boldActive, setBoldActive] = useState(false)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // The initial doc is read once per reset; word count comes from the live store.
-  const initialDocRef = useRef(scriptDoc)
-  const count = wordCount(scriptDoc)
+  // The script is read once, not subscribed to: App gates this screen on `hydrated`, and
+  // nothing here re-renders on edits. Both reads below are one-shot initializers.
+  const [empty, setEmpty] = useState(() => isEmptyDoc(useStore.getState().scriptDoc))
+  const initialDocRef = useRef(useStore.getState().scriptDoc)
 
   const handleNew = () => {
     const previous = clearScript()
@@ -49,7 +49,7 @@ export function EditorScreen() {
         <header className="flex shrink-0 items-center justify-between gap-4">
         <span className="text-lg font-bold tracking-[0.15em] text-fg">PROMPTER</span>
         <EditorToolbar
-          wordCount={count}
+          boldActive={boldActive}
           onNew={handleNew}
           onBold={() => editorRef.current?.toggleBold()}
           onPause={() => editorRef.current?.insertPause()}
@@ -63,6 +63,7 @@ export function EditorScreen() {
             resetKey={resetKey}
             onChange={setScriptDoc}
             onEmptyChange={setEmpty}
+            onBoldStateChange={setBoldActive}
           />
         </main>
       </div>
