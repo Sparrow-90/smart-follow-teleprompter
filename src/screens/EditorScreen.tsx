@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useStore } from '../state/store'
+import { travel } from '../motion/tokens'
 import { type ScriptDoc, isEmptyDoc } from '../model/document'
 import { ScriptEditor, type ScriptEditorHandle } from '../components/editor/ScriptEditor'
 import { EditorToolbar } from '../components/editor/EditorToolbar'
@@ -76,17 +78,26 @@ export function EditorScreen() {
       </div>
 
       <footer className="relative mx-auto w-full max-w-5xl shrink-0 px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-10">
-        {undo && (
-          <div className="absolute -top-16 right-0 left-0 mx-auto flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-surface px-4 py-3">
-            <span className="text-sm text-fg-muted">Script cleared.</span>
-            <button
-              onClick={handleUndo}
-              className="text-sm font-medium text-fg underline underline-offset-2 hover:opacity-80"
+        {/* It used to blink in and blink out; it should rise into place and sink away. */}
+        <AnimatePresence>
+          {undo && (
+            <motion.div
+              className="absolute -top-16 right-0 left-0 mx-auto flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-surface px-4 py-3"
+              initial={{ opacity: 0, y: 12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={travel}
             >
-              Undo
-            </button>
-          </div>
-        )}
+              <span className="text-sm text-fg-muted">Script cleared.</span>
+              <button
+                onClick={handleUndo}
+                className="text-sm font-medium text-fg underline underline-offset-2 hover:opacity-80"
+              >
+                Undo
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <CtaButton disabled={empty} onClick={() => goTo('setup')}>
           Continue
         </CtaButton>

@@ -64,6 +64,32 @@ body {
   color-scheme: light;
 }
 
+/*
+ * Theme cross-fade. Switching dark↔light swaps the token values on <html>, and without this
+ * the whole app blinks between them. Colour properties only — never `transform` — so it
+ * cannot interact with the imperatively-driven teleprompter scroll, even though it does also
+ * apply on the Prompt Mode screen.
+ *
+ * `@layer base` is load-bearing, not tidiness. `transition-property` is *replaced*, never
+ * merged, so an unlayered version of this rule wipes out every Tailwind transition utility
+ * in the app — `transition-opacity` on Prompt Mode's auto-hiding chrome included, which then
+ * blinks instead of fading. Specificity does not save it: `@import 'tailwindcss'` puts the
+ * utilities in `@layer utilities`, and unlayered declarations beat layered ones no matter how
+ * low their specificity. Inside `base` the ordering is the intended one — utilities win where
+ * a component sets its own timing, and everything else still cross-fades.
+ *
+ * The reduced-motion block at the end of this file already neutralises this, so it needs no
+ * guard of its own.
+ */
+@layer base {
+  body,
+  body * {
+    transition-property: background-color, border-color, color;
+    transition-duration: 250ms;
+    transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+}
+
 /* contentEditable empty-state placeholder */
 .script-editor[data-empty='true']::before {
   content: attr(data-placeholder);

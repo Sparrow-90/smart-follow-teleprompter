@@ -17,6 +17,7 @@
     "@huggingface/transformers": "^4.2.0",
     "@ricky0123/vad-web": "^0.0.30",
     "idb-keyval": "^6.2.1",
+    "motion": "^13.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "vosk-browser": "^0.0.8",
