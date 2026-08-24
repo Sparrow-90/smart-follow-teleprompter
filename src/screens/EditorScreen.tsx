@@ -49,9 +49,9 @@ export function EditorScreen() {
         <header className="flex shrink-0 items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <span className="text-lg leading-none font-bold tracking-[0.15em] text-fg">PROMPTER</span>
-          {/* Written properly so it is announced and copied as a name; shown lowercase so it
-              sits quietly under the wordmark rather than competing with it. */}
-          <span className="text-[0.6875rem] leading-none tracking-[0.12em] text-fg-muted lowercase">
+          {/* Muted and small so it sits quietly under the wordmark — but the name keeps its
+              capitals; it is a person's name, not a design element to be styled down. */}
+          <span className="text-[0.6875rem] leading-none tracking-[0.12em] text-fg-muted">
             by Mateusz Wróbel
           </span>
         </div>
