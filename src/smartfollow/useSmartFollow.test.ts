@@ -4,7 +4,10 @@ import type { ScriptDoc } from '../model/document'
 import { SmoothFollowEngine } from '../engine/SmoothFollowEngine'
 import { useSmartFollow } from './useSmartFollow'
 
-const { matchPositionMock } = vi.hoisted(() => ({ matchPositionMock: vi.fn() }))
+const { matchPositionMock, resetWindowMock } = vi.hoisted(() => ({
+  matchPositionMock: vi.fn(),
+  resetWindowMock: vi.fn(),
+}))
 vi.mock('./matcher', () => ({ matchPosition: matchPositionMock }))
 vi.mock('./useVosk', () => ({
   useVosk: () => ({
@@ -14,6 +17,7 @@ vi.mock('./useVosk', () => ({
     latencyMs: 0,
     start: () => {},
     stop: () => {},
+    resetWindow: () => resetWindowMock(),
   }),
 }))
 
@@ -33,6 +37,7 @@ function mount(engine: SmoothFollowEngine) {
 
 beforeEach(() => {
   matchPositionMock.mockReset()
+  resetWindowMock.mockReset()
   matchPositionMock.mockReturnValue({ index: 3, lineIndex: 0, confidence: 0.9, moved: true })
 })
 afterEach(() => vi.restoreAllMocks())
@@ -67,6 +72,31 @@ describe('useSmartFollow — reanchorTo', () => {
     now.mockReturnValue(2500) // past LOCAL_ONLY_MS
     act(() => result.current.feed(['eta', 'theta']))
     expect(matchPositionMock.mock.calls.at(-1)?.[3]).toMatchObject({ localOnly: false })
+  })
+
+  it('clears the recognized-word window so pre-drag speech cannot pull the text back', () => {
+    const { result } = mount(new SmoothFollowEngine())
+    act(() => result.current.reanchorTo(9))
+    expect(resetWindowMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds the following status through a filler word instead of flashing "paused"', () => {
+    matchPositionMock.mockReturnValue({ index: 9, lineIndex: 1, confidence: 0.1, moved: false })
+    const { result } = mount(new SmoothFollowEngine())
+    act(() => result.current.reanchorTo(9))
+    act(() => result.current.feed(['umm'])) // filler, or a misheard breath
+    expect(result.current.status).toBe('following')
+  })
+
+  it('reports status normally again once the local-only window has elapsed', () => {
+    const now = vi.spyOn(performance, 'now')
+    now.mockReturnValue(0)
+    matchPositionMock.mockReturnValue({ index: 9, lineIndex: 1, confidence: 0.1, moved: false })
+    const { result } = mount(new SmoothFollowEngine())
+    act(() => result.current.reanchorTo(9))
+    now.mockReturnValue(2500) // past LOCAL_ONLY_MS
+    act(() => result.current.feed(['umm']))
+    expect(result.current.status).toBe('paused')
   })
 
   it('reports that it is following again', () => {

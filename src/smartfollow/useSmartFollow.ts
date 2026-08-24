@@ -73,7 +73,14 @@ export function useSmartFollow({
       if (engine.scrubbing) return
       const localOnly = performance.now() < localOnlyUntilRef.current
       const res = matchPosition(tokens, indexRef.current, recent, { localOnly })
-      setStatus(res.confidence >= 0.6 ? 'following' : res.confidence >= 0.4 ? 'finding' : 'paused')
+      // Inside the local-only window the presenter has just told us where they are, and the
+      // recognition window has been emptied to match. The first word or two back therefore score
+      // on almost no evidence — a filler or a misheard breath would flash "paused" at exactly the
+      // moment they are looking for confirmation the re-anchor took. Hold the label; the position
+      // logic below still runs, so a real match moves the text immediately either way.
+      if (!localOnly) {
+        setStatus(res.confidence >= 0.6 ? 'following' : res.confidence >= 0.4 ? 'finding' : 'paused')
+      }
       if (res.confidence < 0.45) return // unsure — hold
       indexRef.current = res.index
       // Continuous per-word target: eases with reading progress across the matched word's visual
@@ -106,15 +113,25 @@ export function useSmartFollow({
   )
 
   const vosk = useVosk({ lang, onWords: (recent) => onWords(recent) })
+  // Destructured so reanchorTo depends on the stable callback, not the fresh object each render.
+  const { resetWindow } = vosk
 
-  const reanchorTo = useCallback((index: number) => {
-    indexRef.current = index
-    // The deadband's memory is a pre-drag target — meaningless now, and it would only fight
-    // the first move back. Null lets the next target through freely.
-    lastTargetRef.current = null
-    localOnlyUntilRef.current = performance.now() + LOCAL_ONLY_MS
-    setStatus('following')
-  }, [])
+  const reanchorTo = useCallback(
+    (index: number) => {
+      indexRef.current = index
+      // The words still in the recognition window were spoken *ahead* of the line the presenter
+      // has just chosen. Left in place they out-vote the re-anchor on the very next partial and
+      // pull the text straight back down to where the stumble happened — the whole point of the
+      // re-anchor undone before the presenter has finished the first word of the retake.
+      resetWindow()
+      // The deadband's memory is a pre-drag target — meaningless now, and it would only fight
+      // the first move back. Null lets the next target through freely.
+      lastTargetRef.current = null
+      localOnlyUntilRef.current = performance.now() + LOCAL_ONLY_MS
+      setStatus('following')
+    },
+    [resetWindow],
+  )
 
   const start = useCallback(() => {
     indexRef.current = 0
