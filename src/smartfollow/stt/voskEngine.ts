@@ -1,4 +1,4 @@
-import { createModel, type Model, type KaldiRecognizer } from 'vosk-browser'
+import type { Model, KaldiRecognizer } from 'vosk-browser'
 
 /**
  * On-device speech via Vosk (WebAssembly) — offline, private, continuous, works in Safari.
@@ -63,6 +63,11 @@ export function createVoskEngine(): VoskEngine {
       return model !== null
     },
     async load(modelUrl: string) {
+      // Imported lazily: vosk-browser's dist/vosk.js is 5.8MB. Statically imported it lands in
+      // the entry chunk and pushes the app shell past workbox's 2MB precache limit, which fails
+      // the PWA build outright. Behind a dynamic import it becomes its own chunk, fetched the
+      // first time Smart Follow actually starts — so the shell stays small and precacheable.
+      const { createModel } = await import('vosk-browser')
       model = await createModel(modelUrl)
     },
     async startMic() {

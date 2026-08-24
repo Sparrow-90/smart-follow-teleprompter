@@ -15,9 +15,10 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
 
 - **Phase 1 — Manual teleprompter: shipped** (branch `main`). Editor, Setup, Prompt Mode, Smooth Follow
   engine, presets, Mirror, Reading Marker, dark+light theme, installable offline PWA.
-- **Smart Follow — POC validated** (branch `smart-follow-poc`, being integrated). On-device Vosk speech
-  → matcher → gentle word-level follow. Confirmed working live (Polish, Safari). Lives behind a hidden
-  `#lab` route during the POC.
+- **Smart Follow — integrated** into the real Setup→Prompt flow (live toggle, confidence status,
+  manual override, re-anchor recovery). On-device Vosk speech → matcher → gentle word-level follow.
+  Confirmed working live (Polish, Safari). `#lab` survives as a dev harness, not the product path.
+  PRD Phase 3's remaining gap is **pause behaviour** — `tokenizeScript` still drops PAUSE blocks.
 
 ## Stack
 
@@ -58,6 +59,12 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Models are gitignored** (`public/models/`, ~40–50MB each). Run `scripts/fetch-models.sh` after clone.
+- **`vosk-browser` is dynamically imported** in `stt/voskEngine.ts`. Its `dist/vosk.js` is 5.8MB; a
+  static import puts it in the entry chunk, past workbox's 2MB precache limit, and the PWA build
+  fails outright. It is pinned to a `vosk-engine-*` chunk (`build.rollupOptions.output.manualChunks`)
+  because the workbox `globIgnores`/`runtimeCaching` rules match it by filename — rename one, rename
+  both. The engine is runtime-cached on first use, not precached; the **models are still not cached
+  at all**, so Smart Follow is not yet offline.
 - TDD for pure logic (model, engine, matcher, tokenizer, positionMap). UI verified by driving the app
   with Playwright (see `.claude/skills/verify/SKILL.md`).
 - Tablet-first; dark default + light theme; teleprompter scroll must NOT be disabled by
@@ -78,10 +85,12 @@ node scripts/verify.mjs         # Phase 1 full flow
 node scripts/verify-follow.mjs  # gentle line-by-line follow
 node scripts/verify-paragraph.mjs # follow advances within a paragraph
 node scripts/verify-vosk.mjs    # Vosk loads + recognizes (uses public/test-*.wav from `say`)
+node scripts/verify-bundle.mjs  # builds, then guards chunk shape + PWA precache (no server needed)
 ```
 
 ## Roadmap / next
 
-Integrating Smart Follow into the real Setup→Prompt flow (live toggle, mic permission, confidence status,
-recovery). Later: bundle/precache the model for true offline PWA, VAD gate, latency tuning, more languages.
+PRD Phase 3's last item: **PAUSE behaviour** for Smart Follow (see the gotcha above). Then Phase 4
+device optimization on a real installed PWA. Still open: caching the 40–50MB models for true offline
+Smart Follow, VAD gate, latency tuning, more languages.
 See `docs`/PRD §63–74 and the memory notes for history.

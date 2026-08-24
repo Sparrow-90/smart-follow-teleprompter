@@ -34,10 +34,37 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // The speech engine is 5.8MB — far past workbox's 2MB precache limit, and pointless to
+        // force on someone who may never turn Smart Follow on. Kept out of the precache so the
+        // app shell installs small and fast, and cached on first use instead (below), so Smart
+        // Follow still works offline once it has run.
+        globIgnores: ['**/vosk-engine-*.js'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/vosk-engine-.*\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'vosk-engine',
+              // Content-hashed filenames, so keep the current build's and one predecessor.
+              expiration: { maxEntries: 2 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
         cleanupOutdatedCaches: true,
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Pin the lazy speech-engine chunk to a predictable name. The workbox rules above match
+        // it by filename, so letting Rollup derive the name from the module would make the PWA
+        // caching config silently wrong the day that derivation changes.
+        manualChunks: (id) => (id.includes('vosk-browser') ? 'vosk-engine' : undefined),
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
