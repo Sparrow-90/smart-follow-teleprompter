@@ -31,7 +31,7 @@ export class SmoothFollowEngine {
   private speedMultiplier = 1
   private tau: number
   private maxPosition = Infinity
-  private scrubbing = false
+  private scrubbingFlag = false
   private mode: EngineMode = 'auto'
   private targetPosition = 0
   private gliding = false
@@ -73,8 +73,23 @@ export class SmoothFollowEngine {
     this.maxPosition = Math.max(0, contentHeight - viewportHeight)
     this.position = clamp(this.position, 0, this.maxPosition)
   }
+  get scrubbing(): boolean {
+    return this.scrubbingFlag
+  }
+
+  /**
+   * Begin/end a manual drag. Ending one in follow mode adopts the position the user chose as
+   * the new target: without this the engine would glide straight back to its stale pre-drag
+   * target the instant the finger lifts. It lives here rather than in a separate method the
+   * caller must remember, because forgetting that call is exactly the bug this fixes.
+   */
   setScrubbing(on: boolean): void {
-    this.scrubbing = on
+    if (on) this.gliding = false // a finger cancels an in-flight glide, as scrubBy/setPosition do
+    if (!on && this.scrubbingFlag && this.mode === 'follow') {
+      this.targetPosition = this.position
+      this.velocity = 0
+    }
+    this.scrubbingFlag = on
   }
   scrubBy(deltaPx: number): void {
     this.gliding = false // manual override always wins
@@ -103,7 +118,7 @@ export class SmoothFollowEngine {
   }
 
   private currentTargetVelocity(): number {
-    return this.playingFlag && !this.scrubbing ? this.baseSpeed * this.speedMultiplier : 0
+    return this.playingFlag && !this.scrubbingFlag ? this.baseSpeed * this.speedMultiplier : 0
   }
 
   /**
@@ -153,8 +168,12 @@ export class SmoothFollowEngine {
     }
 
     if (this.mode === 'follow') {
-      // Smart Follow path: critically-damped move toward the target with a speed cap, so
-      // any distance (one line or several) glides gently and never snaps.
+      // The finger owns the position while it is down — the AI must never fight a manual
+      // scroll (PRD §37). scrubBy() is the only thing that may move it until release.
+      if (this.scrubbingFlag) {
+        this.velocity = 0
+        return
+      }
       this.position = this.smoothDampFollow(this.position, this.targetPosition, dt)
       this.position = clamp(this.position, 0, this.maxPosition)
       return
@@ -164,7 +183,7 @@ export class SmoothFollowEngine {
     const target = this.currentTargetVelocity()
     this.velocity += (target - this.velocity) * alpha
 
-    if (!this.scrubbing) {
+    if (!this.scrubbingFlag) {
       this.position += this.velocity * dt
     }
 

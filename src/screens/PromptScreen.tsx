@@ -8,6 +8,7 @@ import { FocusZone } from '../components/prompt/FocusZone'
 import { PromptControls } from '../components/prompt/PromptControls'
 import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
+import { wordIndexAtAnchor, firstWordIndexIn } from '../smartfollow/positionMap'
 
 const MIN_SPEED = 0.4
 const MAX_SPEED = 3.0
@@ -19,6 +20,7 @@ export function PromptScreen() {
   const settings = useStore((s) => s.settings)
   const goTo = useStore((s) => s.goTo)
   const preset = PRESETS[settings.preset]
+  const lineHeightPx = preset.fontSize * preset.lineHeight
 
   const [playing, setPlaying] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -39,7 +41,7 @@ export function PromptScreen() {
     engine,
     viewportRef,
     lang: settings.language,
-    lineHeightPx: preset.fontSize * preset.lineHeight,
+    lineHeightPx,
     mirror: settings.mirror,
   })
   const [micFailed, setMicFailed] = useState(false)
@@ -111,6 +113,10 @@ export function PromptScreen() {
     else engine.pause()
     setPlaying(false)
     engine.glideTo(0) // eases smoothly back to the top
+    // Follow mode would otherwise smooth-damp straight back down to its pre-restart target the
+    // moment the glide finishes — stop() does not leave follow mode.
+    engine.setTargetPosition(0)
+    if (usingSFRef.current) sfRef.current.reanchorTo(0)
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
   }, [engine])
@@ -198,6 +204,21 @@ export function PromptScreen() {
     }
   }, [])
 
+  // Dev-only seam so scripts/verify-reanchor.mjs can drive Smart Follow without a microphone
+  // or the 50MB model. Stripped from production builds by the import.meta.env.DEV guard.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(window as unknown as Record<string, unknown>).__prompter = {
+      followMode: () => engine.setMode('follow'),
+      feed: (words: string[]) => sfRef.current.feed(words),
+      position: () => engine.position,
+      index: () => sfRef.current.getIndex(),
+    }
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__prompter
+    }
+  }, [engine])
+
   // Glide the tapped line into the Focus Zone (~40% of the viewport height).
   const jumpToLineAt = (x: number, y: number): boolean => {
     const viewport = viewportRef.current
@@ -208,7 +229,17 @@ export function PromptScreen() {
     if (!line) return false
     const lineRect = line.getBoundingClientRect()
     const vpRect = viewport.getBoundingClientRect()
-    engine.glideTo(engine.position + (lineRect.top - vpRect.top) - 0.4 * vpRect.height)
+    const dest = engine.position + (lineRect.top - vpRect.top) - 0.4 * vpRect.height
+    engine.glideTo(dest)
+    // glideTo drives the one-shot glide only; it never touches targetPosition. Without this,
+    // follow mode smooth-damps back to the stale pre-tap target the moment the glide ends —
+    // the same trap restart() guards against with its own setTargetPosition(0).
+    engine.setTargetPosition(dest)
+    if (usingSFRef.current) {
+      // Tells the matcher where the presenter now is, so it carries on from here.
+      const index = firstWordIndexIn(line)
+      if (index != null) sfRef.current.reanchorTo(index)
+    }
     return true
   }
 
@@ -231,8 +262,24 @@ export function PromptScreen() {
     if (!drag.current.active) return
     const wasTap = drag.current.moved < 6
     drag.current.active = false
+    // Adopts the dragged-to position as the follow target, so nothing lurches while we
+    // work out which word the presenter landed on.
     engine.setScrubbing(false)
-    if (!wasTap) return
+    if (!wasTap) {
+      // A real drag: the presenter has moved the script by hand — usually back to a line they
+      // fumbled. Tell Smart Follow where they now are so it carries on from there (PRD §37).
+      // Guarded on Smart Follow being *enabled*, deliberately not on `listening`. `listening`
+      // only goes true after Vosk's startMic() resolves, which the browser driver cannot do
+      // (no mic, and the 50MB model is gitignored) — gating on it would make Task 6 silently
+      // bypass this entire path and still report green. Re-anchoring while not listening is
+      // harmless: start() resets the index regardless, and sfStatusLabel checks !sf.listening
+      // before status, so 'following' cannot leak onto the screen.
+      if (usingSFRef.current) {
+        const index = wordIndexAtAnchor(viewportRef.current, undefined, lineHeightPx)
+        if (index != null) sfRef.current.reanchorTo(index)
+      }
+      return
+    }
     if (!controlsVisible) {
       setControlsVisible(true)
       scheduleHide(engine.playing)

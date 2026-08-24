@@ -228,3 +228,79 @@ describe('SmoothFollowEngine — follow mode (Phase 2 seam)', () => {
     expect(e.position).toBeGreaterThan(300 * 0.98)
   })
 })
+
+describe('SmoothFollowEngine — manual override in follow mode (PRD §37)', () => {
+  /** An engine mid-Smart-Follow: following a target 2000px down a long script. */
+  const following = () => {
+    const e = new SmoothFollowEngine()
+    e.setContentMetrics(5000, 800)
+    e.setMode('follow')
+    e.setPosition(2000)
+    e.setTargetPosition(2000)
+    return e
+  }
+
+  it('holds the position the finger put it at, instead of gliding back to the target', () => {
+    const e = following()
+    e.setScrubbing(true)
+    e.scrubBy(-300) // the presenter pulls the script back to a fumbled line
+    const chosen = e.position
+    expect(chosen).toBe(1700)
+    run(e, 1) // a full second of animation frames while the finger is still down
+    expect(e.position).toBe(chosen)
+  })
+
+  it('adopts the chosen position as the new target when the finger lifts', () => {
+    const e = following()
+    e.setScrubbing(true)
+    e.scrubBy(-300)
+    e.setScrubbing(false)
+    const chosen = e.position
+    run(e, 1)
+    expect(e.position).toBe(chosen)
+    expect(e.velocity).toBe(0)
+  })
+
+  it('reports whether a scrub is in progress', () => {
+    const e = following()
+    expect(e.scrubbing).toBe(false)
+    e.setScrubbing(true)
+    expect(e.scrubbing).toBe(true)
+    e.setScrubbing(false)
+    expect(e.scrubbing).toBe(false)
+  })
+
+  it('still follows a new target once the scrub has ended', () => {
+    const e = following()
+    e.setScrubbing(true)
+    e.scrubBy(-300)
+    e.setScrubbing(false)
+    e.setTargetPosition(e.position + 200) // he starts reading again
+    run(e, 3)
+    expect(e.position).toBeCloseTo(1900, 0)
+  })
+
+  it('leaves auto mode behaviour untouched', () => {
+    const e = new SmoothFollowEngine({ baseSpeed: 60 })
+    e.setContentMetrics(5000, 800)
+    e.play()
+    run(e, 1)
+    const moved = e.position
+    expect(moved).toBeGreaterThan(0)
+    e.setScrubbing(true)
+    run(e, 1)
+    expect(e.position).toBe(moved) // auto mode already froze during a scrub
+  })
+
+  it('cancels an in-flight glide when the finger touches down (manual always wins)', () => {
+    const e = following()
+    e.glideTo(0) // initiate a glide from position 2000 toward 0
+    e.tick(FRAME) // let it start moving
+    const posAfterGlideStart = e.position
+    expect(posAfterGlideStart).toBeLessThan(2000) // glide is in progress
+    e.setScrubbing(true) // user touches the screen during the glide
+    run(e, 0.5) // a half-second of animation frames
+    // The glide should have been cancelled, so position should not move
+    expect(e.position).toBe(posAfterGlideStart)
+  })
+})

@@ -115,3 +115,32 @@ describe('matchPosition — reports the matched line', () => {
     expect(r.lineIndex).toBe(1)
   })
 })
+
+describe('matchPosition — localOnly (manual re-anchor guard)', () => {
+  // The distinctive phrase sits ~70 words past the current position, far outside the
+  // forward window of 40, so only a global widening can reach it.
+  const t = toks(
+    'alpha beta gamma delta epsilon ' +
+      Array.from({ length: 70 }, (_, i) => `filler${i}`).join(' ') +
+      ' zeppelin kalejdoskop sygnalizacja',
+  )
+
+  it('reaches a distant phrase by default (global widening)', () => {
+    const r = matchPosition(t, 0, ['zeppelin', 'kalejdoskop', 'sygnalizacja'])
+    expect(r.moved).toBe(true)
+    expect(t[r.index].text).toBe('sygnalizacja')
+  })
+
+  it('holds position when localOnly is set and the phrase is out of local range', () => {
+    const r = matchPosition(t, 0, ['zeppelin', 'kalejdoskop', 'sygnalizacja'], { localOnly: true })
+    expect(r.moved).toBe(false)
+    expect(r.index).toBe(0)
+  })
+
+  it('still tracks normally inside the local window when localOnly is set', () => {
+    const r = matchPosition(t, 0, ['beta', 'gamma', 'delta'], { localOnly: true })
+    expect(r.moved).toBe(true)
+    expect(t[r.index].text).toBe('delta')
+    expect(r.confidence).toBeGreaterThan(0.75)
+  })
+})

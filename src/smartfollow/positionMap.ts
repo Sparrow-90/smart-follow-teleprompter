@@ -79,3 +79,97 @@ export function wordProgressTarget(
   const top = interpolatedLineTop(w.top, w.left + w.width / 2, col.left, col.width, lineHeightPx, mirror)
   return scrollTargetForLine(currentPosition, top, vp.top, vp.height, anchor)
 }
+
+/** A line (or word) measured against the viewport, tagged with the token index it starts at. */
+export interface AnchorCandidate {
+  index: number
+  top: number
+  bottom: number
+}
+
+/**
+ * Pick the candidate whose vertical band is nearest `anchorY` — zero distance if it contains
+ * it. Ties go to the earlier candidate in the list, i.e. the earlier line in the script.
+ */
+export function pickIndexNearestAnchor(
+  candidates: AnchorCandidate[],
+  anchorY: number,
+): number | null {
+  let bestIndex: number | null = null
+  let bestDistance = Infinity
+  for (const c of candidates) {
+    const distance = anchorY < c.top ? c.top - anchorY : anchorY > c.bottom ? anchorY - c.bottom : 0
+    if (distance < bestDistance) {
+      bestDistance = distance
+      bestIndex = c.index
+    }
+  }
+  return bestIndex
+}
+
+/** The token index of the first indexed word inside a rendered line, or null if it has none. */
+export function firstWordIndexIn(lineEl: Element): number | null {
+  const word = lineEl.querySelector('[data-w]')
+  if (!word) return null
+  const index = Number(word.getAttribute('data-w'))
+  return Number.isFinite(index) ? index : null
+}
+
+/**
+ * Which script word is sitting at the Focus Zone right now — the inverse of
+ * {@link wordProgressTarget}. Used after a manual drag to tell Smart Follow where the
+ * presenter has just put themselves.
+ *
+ * Resolution order: the exact word under the anchor point, else the first word of the line
+ * under it, else the first word of the nearest line by measurement (covers landing on a PAUSE
+ * block or an inter-block margin). Returns null when the script has no indexed words, in which
+ * case the caller keeps its current position.
+ *
+ * Mirroring needs no special case: hit-testing is in visual coordinates and mirrored text
+ * occupies the same place on screen.
+ */
+export function wordIndexAtAnchor(
+  viewportEl: Element | null | undefined,
+  anchor: number = FOCUS_ANCHOR,
+  lineHeightPx = 0,
+): number | null {
+  if (!viewportEl) return null
+  const vp = viewportEl.getBoundingClientRect()
+  const column = viewportEl.querySelector('[data-prompter-column]')
+  const col = column?.getBoundingClientRect()
+  const anchorY = vp.top + anchor * vp.height
+  const x = col && col.width > 0 ? col.left + col.width / 2 : vp.left + vp.width / 2
+
+  const canProbe =
+    typeof document !== 'undefined' && typeof document.elementFromPoint === 'function'
+  // Paragraphs carry my-[0.45em] margins, so the anchor landing in an inter-block gap is
+  // routine. Probing half a line either side turns most of those misses into a real word hit,
+  // which keeps the coarse nearest-paragraph fallback below for what it is actually for:
+  // PAUSE blocks. Without this, a gap hit returns the *first* word of a long paragraph — up to
+  // 40+ words behind the presenter, right at the edge of the forward window.
+  const probes = lineHeightPx > 0 ? [0, -lineHeightPx / 2, lineHeightPx / 2] : [0]
+
+  for (const dy of probes) {
+    const hit = canProbe ? document.elementFromPoint(x, anchorY + dy) : null
+    if (!hit) continue
+    const word = hit.closest('[data-w]')
+    if (word) {
+      const index = Number(word.getAttribute('data-w'))
+      if (Number.isFinite(index)) return index
+    }
+    const line = hit.closest('[data-prompter-line]')
+    if (line) {
+      const index = firstWordIndexIn(line)
+      if (index != null) return index
+    }
+  }
+
+  const candidates: AnchorCandidate[] = []
+  for (const el of viewportEl.querySelectorAll('[data-prompter-line]')) {
+    const index = firstWordIndexIn(el)
+    if (index == null) continue
+    const r = el.getBoundingClientRect()
+    candidates.push({ index, top: r.top, bottom: r.bottom })
+  }
+  return pickIndexNearestAnchor(candidates, anchorY)
+}

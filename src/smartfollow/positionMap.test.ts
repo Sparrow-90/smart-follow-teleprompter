@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { scrollTargetForLine, interpolatedLineTop, applyBackwardDeadband } from './positionMap'
+import {
+  scrollTargetForLine,
+  interpolatedLineTop,
+  applyBackwardDeadband,
+  pickIndexNearestAnchor,
+} from './positionMap'
 
 describe('scrollTargetForLine', () => {
   it('moves a line at screen-500 to the 40% anchor (320) of an 800px viewport', () => {
@@ -82,5 +87,39 @@ describe('applyBackwardDeadband', () => {
 
   it('treats an unchanged target as forward (passes through)', () => {
     expect(applyBackwardDeadband(100, 100, DEAD)).toBe(100)
+  })
+})
+
+describe('pickIndexNearestAnchor', () => {
+  // Three lines stacked down the screen, each 60px tall with a 20px gap.
+  const lines = [
+    { index: 0, top: 100, bottom: 160 },
+    { index: 10, top: 180, bottom: 240 },
+    { index: 20, top: 260, bottom: 320 },
+  ]
+
+  it('picks the line containing the anchor', () => {
+    expect(pickIndexNearestAnchor(lines, 200)).toBe(10)
+  })
+
+  it('picks the nearest line when the anchor falls in a gap', () => {
+    expect(pickIndexNearestAnchor(lines, 255)).toBe(20) // 15px below line 10, 5px above line 20
+    expect(pickIndexNearestAnchor(lines, 245)).toBe(10) // 5px below line 10, 15px above line 20
+  })
+
+  it('breaks an exact tie in favour of the earlier line', () => {
+    expect(pickIndexNearestAnchor(lines, 250)).toBe(10) // 10px from both — the earlier one wins
+  })
+
+  it('picks the first line when the anchor is above everything', () => {
+    expect(pickIndexNearestAnchor(lines, 0)).toBe(0)
+  })
+
+  it('picks the last line when the anchor is below everything', () => {
+    expect(pickIndexNearestAnchor(lines, 9999)).toBe(20)
+  })
+
+  it('returns null when there are no candidates', () => {
+    expect(pickIndexNearestAnchor([], 200)).toBe(null)
   })
 })

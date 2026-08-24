@@ -18,6 +18,13 @@ This is a browser-based PWA (React + Vite). Verify by driving the real UI with P
 - **Prompt Restart + tap-to-jump (dev):** `node scripts/verify-prompt.mjs` → asserts Restart eases to
   top and pauses, tap-to-jump recenters a tapped line at ~40%, and a tap while controls are hidden only
   reveals them (no jump).
+- **Manual re-anchor (dev):** `node scripts/verify-reanchor.mjs` → drags the script back mid-Smart-Follow
+  and asserts the engine does not fight the finger, the text stays where it was put, the matcher
+  re-anchors to the word at the Focus Zone, an apology during the local-only window does not move it,
+  reading on advances, and tap-to-jump lands without drifting back to a stale target. 10 checks.
+  Note: after a re-anchor the position may legitimately move BACKWARD when the presenter speaks the
+  line from its start — the anchor lands on the line's last word. Assert the word's offset from the
+  anchor, never the raw scroll direction.
 - **Smart Follow lab (dev):** `node scripts/verify-lab.mjs` → seeds a script, opens the hidden `#lab`
   harness (reach via `window.location.hash='#lab'`; a `hashchange` listener switches views), types a
   "spoken" phrase, and asserts the matched line eases to ~40% with high confidence, while a garbled
@@ -30,7 +37,7 @@ This is a browser-based PWA (React + Vite). Verify by driving the real UI with P
 - Editor: type into `getByRole('textbox', { name: 'Script' })`; Bold = `button "Bold selection"`,
   PAUSE = `button "Pause"` (exact), New = `button "New"`. Word count = `getByText(/words$/)`.
 - Setup: presets are `role=radio` (Close/Standard/Distance); toggles by label text (Mirror, Reading
-  Marker, Light theme). Smart Follow is intentionally disabled ("Coming soon").
+  Marker, Light theme). Smart Follow is a live `role=switch` toggle (`getByRole('switch', { name: 'Smart Follow' })`).
 - Prompt: enters **paused**; `button "Play"`/"Pause", "Slower"/"Faster", "Exit". The scrolling element
   is `[data-prompter-text]`; read its `getComputedStyle(...).transform` before/after Play to confirm motion.
 

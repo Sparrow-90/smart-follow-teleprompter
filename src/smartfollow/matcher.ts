@@ -19,6 +19,12 @@ export interface MatchOptions {
   forward?: number
   /** Below this score we keep the current position (anti false-jump). */
   minConfidence?: number
+  /**
+   * Restrict the search to the local window and never widen to the whole script. Set for a
+   * short spell after a manual re-anchor so speech the presenter is still finishing ("sorry,
+   * let me take that again") cannot jump them to a false match elsewhere in the document.
+   */
+  localOnly?: boolean
 }
 
 /**
@@ -73,8 +79,9 @@ export function matchPosition(
     score: -1,
   })
 
-  // Only widen the search to the whole script when the local window is unconvincing (§32).
-  if (best.score < minConfidence) best = consider(0, tokens.length - 1, best)
+  // Only widen the search to the whole script when the local window is unconvincing (§32) —
+  // and never right after a manual re-anchor, where the user has already told us where they are.
+  if (!options.localOnly && best.score < minConfidence) best = consider(0, tokens.length - 1, best)
 
   if (best.score < minConfidence) {
     return { index: cur, lineIndex: lineOf(cur), confidence: Math.max(0, best.score), moved: false }

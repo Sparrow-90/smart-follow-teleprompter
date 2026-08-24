@@ -7,6 +7,13 @@ import { matchPosition } from './matcher'
 import { wordProgressTarget, applyBackwardDeadband } from './positionMap'
 import { useVosk } from './useVosk'
 
+/**
+ * How long after a manual re-anchor the matcher stays local-only. Roughly the length of an
+ * apology — long enough that "sorry, let me take that again" cannot move the document, short
+ * enough that a genuine jump elsewhere is found again straight away.
+ */
+const LOCAL_ONLY_MS = 2000
+
 export type SmartFollowStatus = 'idle' | 'following' | 'finding' | 'paused'
 
 interface Options {
@@ -28,6 +35,10 @@ export interface SmartFollowController {
   latencyMs: number
   start: () => void
   stop: () => void
+  /** Put the matcher at `index` — the presenter has just placed the text there by hand. */
+  reanchorTo: (index: number) => void
+  /** The matcher's current token index. Read by the dev verification seam (Task 5). */
+  getIndex: () => number
   /** Drive the matcher directly (typed testing / no mic). */
   feed: (words: string[]) => void
 }
@@ -48,6 +59,8 @@ export function useSmartFollow({
   const indexRef = useRef(0)
   // Last scroll target we handed the engine — null means "no target yet" (first move passes freely).
   const lastTargetRef = useRef<number | null>(null)
+  // While `now` is below this, matching stays local — see LOCAL_ONLY_MS.
+  const localOnlyUntilRef = useRef(0)
   // The text column is stable for a session; cache it so we don't re-query on every STT partial.
   const columnElRef = useRef<Element | null>(null)
   const [status, setStatus] = useState<SmartFollowStatus>('idle')
@@ -55,7 +68,11 @@ export function useSmartFollow({
   const onWords = useCallback(
     (recent: string[]) => {
       if (tokens.length === 0 || recent.length === 0) return
-      const res = matchPosition(tokens, indexRef.current, recent)
+      // A drag in progress owns the position (PRD §37) — speech heard mid-gesture must not
+      // queue a target that would yank the text out from under the finger on release.
+      if (engine.scrubbing) return
+      const localOnly = performance.now() < localOnlyUntilRef.current
+      const res = matchPosition(tokens, indexRef.current, recent, { localOnly })
       setStatus(res.confidence >= 0.6 ? 'following' : res.confidence >= 0.4 ? 'finding' : 'paused')
       if (res.confidence < 0.45) return // unsure — hold
       indexRef.current = res.index
@@ -90,6 +107,15 @@ export function useSmartFollow({
 
   const vosk = useVosk({ lang, onWords: (recent) => onWords(recent) })
 
+  const reanchorTo = useCallback((index: number) => {
+    indexRef.current = index
+    // The deadband's memory is a pre-drag target — meaningless now, and it would only fight
+    // the first move back. Null lets the next target through freely.
+    lastTargetRef.current = null
+    localOnlyUntilRef.current = performance.now() + LOCAL_ONLY_MS
+    setStatus('following')
+  }, [])
+
   const start = useCallback(() => {
     indexRef.current = 0
     lastTargetRef.current = null
@@ -112,6 +138,8 @@ export function useSmartFollow({
     latencyMs: vosk.latencyMs,
     start,
     stop,
+    reanchorTo,
+    getIndex: () => indexRef.current,
     feed: onWords,
   }
 }
