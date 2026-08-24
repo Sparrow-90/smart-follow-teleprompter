@@ -47,7 +47,14 @@ export function EditorScreen() {
     <div className="flex h-[100dvh] flex-col">
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-6 pt-5 sm:px-10">
         <header className="flex shrink-0 items-center justify-between gap-4">
-        <span className="text-lg font-bold tracking-[0.15em] text-fg">PROMPTER</span>
+        <div className="flex flex-col gap-1">
+          <span className="text-lg leading-none font-bold tracking-[0.15em] text-fg">PROMPTER</span>
+          {/* Written properly so it is announced and copied as a name; shown lowercase so it
+              sits quietly under the wordmark rather than competing with it. */}
+          <span className="text-[0.6875rem] leading-none tracking-[0.12em] text-fg-muted lowercase">
+            by Mateusz Wróbel
+          </span>
+        </div>
         <EditorToolbar
           boldActive={boldActive}
           onNew={handleNew}
