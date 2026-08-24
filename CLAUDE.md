@@ -23,7 +23,8 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
 ## Stack
 
 React 18 · TypeScript · Vite 6 · Tailwind v4 (`@tailwindcss/vite`) · `vite-plugin-pwa` · Zustand ·
-idb-keyval · Vitest 3. On-device speech: `vosk-browser` (WASM). Inter self-hosted.
+idb-keyval · Vitest 3 · Framer Motion (the `motion` package, imported from `motion/react`).
+On-device speech: `vosk-browser` (WASM). Inter self-hosted.
 
 ## Architecture
 
@@ -32,6 +33,7 @@ src/
   screens/      EditorScreen, SetupScreen, PromptScreen, SmartFollowLabScreen (#lab POC harness)
   components/   editor/  setup/  prompt/  ui/
   engine/       SmoothFollowEngine (tested) + useSmoothFollow (rAF loop) + useWakeLock
+  motion/       tokens — the whole app's motion vocabulary (`travel` spring / `change` ease)
   model/        document (script model + sanitizer, tested), presets, settings
   state/        store (Zustand): view, scriptDoc, settings, hydrate/persist
   persistence/  storage (IndexedDB script + localStorage prefs)
@@ -39,7 +41,7 @@ src/
                 stt/voskEngine, useVosk (mic → recognized words)
 ```
 
-**Two hard boundaries:**
+**Three hard boundaries:**
 1. **Document model is the single source of truth** (`model/document.ts`). Editor serializes the
    contentEditable DOM → `ScriptDoc`; Prompt Mode renders from it; `tokenizeScript` tokenizes it for
    Smart Follow. Word indices in `PromptText wordIndices` align to `tokenizeScript`'s global indices.
@@ -65,6 +67,17 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   because the workbox `globIgnores`/`runtimeCaching` rules match it by filename — rename one, rename
   both. The engine is runtime-cached on first use, not precached; the **models are still not cached
   at all**, so Smart Follow is not yet offline.
+- **Framer owns `transform`; so does the scroll engine — never both on one element.** No `motion.*`
+  may touch `contentRef`, the `[data-w]` word spans, or `FocusZone` (a static gradient *precisely* to
+  avoid per-frame work). Prompt Mode is entered by an early `return` in `App.tsx` placed *before*
+  `AnimatePresence`, so switching to it unmounts the animated subtree wholesale — that is what keeps
+  the enter/exit a hard cut, and what keeps the mic and wake lock tied to `PromptScreen`'s unmount.
+- **Framer animates in JS and ignores the `prefers-reduced-motion` CSS rule in `index.css`.**
+  `<MotionConfig reducedMotion="user">` at the root is what guards it. The invariant it protects —
+  the teleprompter still scrolls with the OS setting on — is asserted by `verify-motion.mjs`.
+- **The segmented pill is a *raised* tile, not an accent fill** (same reasoning as EditorToolbar's
+  pressed state). An inverting pill has no label colour that stays readable while it travels; a
+  raised one needs no timing at all. Do not "fix" it back to `bg-accent`.
 - TDD for pure logic (model, engine, matcher, tokenizer, positionMap). UI verified by driving the app
   with Playwright (see `.claude/skills/verify/SKILL.md`).
 - Tablet-first; dark default + light theme; teleprompter scroll must NOT be disabled by

@@ -64,6 +64,24 @@ body {
   color-scheme: light;
 }
 
+/*
+ * Theme cross-fade. Switching dark↔light swaps the token values on <html>, and without this
+ * the whole app blinks between them. Colour properties only — never `transform` — so it
+ * cannot interact with the imperatively-driven teleprompter scroll, even though it does also
+ * apply on the Prompt Mode screen.
+ *
+ * Tailwind's own `transition-colors` utilities are class specificity (0-1-0) and beat
+ * `body *` (0-0-2), so any component managing its own colour timing keeps it; nothing ends
+ * up driven twice. The reduced-motion block at the end of this file already neutralises
+ * this rule, so it needs no guard of its own.
+ */
+body,
+body * {
+  transition-property: background-color, border-color, color;
+  transition-duration: 250ms;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 /* contentEditable empty-state placeholder */
 .script-editor[data-empty='true']::before {
   content: attr(data-placeholder);
