@@ -35,7 +35,7 @@ src/
   engine/       SmoothFollowEngine (tested) + useSmoothFollow (rAF loop) + useWakeLock
   motion/       tokens — the whole app's motion vocabulary (`travel` spring / `change` ease)
   model/        document (script model + sanitizer, tested), reflowPastedText (tested),
-                presets, settings
+                presets (+ resolvePreset, tested), settings
   state/        store (Zustand): view, scriptDoc, settings, hydrate/persist
   persistence/  storage (IndexedDB script + localStorage prefs)
   smartfollow/  tokenizeScript, matcher, positionMap (all pure + tested);
@@ -57,6 +57,14 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
 
 ## Key decisions / gotchas
 
+- **Preset sizes are authored for one tablet and fitted to the real screen** by `resolvePreset`.
+  Two scales, deliberately: **text** grows by whichever viewport axis is tighter (height decides
+  how many lines fit, and the presenter reads by lines), **the column** grows by width (width is
+  the only thing limiting it — tying it to the tighter axis left a quarter of a wide screen empty).
+  `PromptScreen` must derive `lineHeightPx` from the *resolved* preset, not `PRESETS[...]`: Smart
+  Follow aims at a line with that number, so if the rendered text scales and it doesn't, the
+  follow targets a line the presenter isn't reading. That coupling is why this can't be a CSS
+  `vw` trick. `verify-preset-size.mjs` asserts the two still agree.
 - **Paste is reflowed, because a PDF copy has no paragraphs.** Copying from a PDF gives a newline
   at every *visual* line ending, so block-per-line rendering turns one paragraph into eight.
   `reflowPastedText` rejoins them, keying on width rather than punctuation: hard wrapping pushes
@@ -130,6 +138,7 @@ node scripts/verify-bundle.mjs  # builds, then guards chunk shape + PWA precache
 node scripts/verify-models.mjs  # guards that dist/ actually contains the Vosk models (run after a build)
 node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fake capture device)
 node scripts/verify-paste.mjs   # a PDF paste lands as the paragraphs the PDF actually had
+node scripts/verify-preset-size.mjs # presets fill the screen; lineHeightPx matches what renders
 ```
 
 ## Roadmap / next

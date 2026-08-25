@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../state/store'
-import { PRESETS } from '../model/presets'
+import { PRESETS, resolvePreset } from '../model/presets'
 import { useSmoothFollow } from '../engine/useSmoothFollow'
 import { useWakeLock } from '../engine/useWakeLock'
 import { PromptText } from '../components/prompt/PromptText'
@@ -15,11 +15,38 @@ const MAX_SPEED = 3.0
 const SPEED_STEP = 0.2
 const HIDE_DELAY = 3500
 
+/** The live viewport, so preset sizes can be fitted to the screen the presenter is reading. */
+function useViewportSize() {
+  const [size, setSize] = useState(() => ({
+    width: typeof window === 'undefined' ? 0 : window.innerWidth,
+    height: typeof window === 'undefined' ? 0 : window.innerHeight,
+  }))
+  useEffect(() => {
+    const measure = () => setSize({ width: window.innerWidth, height: window.innerHeight })
+    measure() // an iPad rotated before this mounted would otherwise keep the stale size
+    window.addEventListener('resize', measure)
+    window.addEventListener('orientationchange', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('orientationchange', measure)
+    }
+  }, [])
+  return size
+}
+
 export function PromptScreen() {
   const scriptDoc = useStore((s) => s.scriptDoc)
   const settings = useStore((s) => s.settings)
   const goTo = useStore((s) => s.goTo)
-  const preset = PRESETS[settings.preset]
+  const viewport = useViewportSize()
+  // Sizes are authored for one tablet and fitted to this screen. Everything below reads THIS
+  // object — the rendered text, the scroll speed, and lineHeightPx, which is what Smart Follow
+  // aims a line with. Deriving any of them from the unscaled preset would put the follow target
+  // on a different line than the one on screen.
+  const preset = useMemo(
+    () => resolvePreset(PRESETS[settings.preset], viewport.width, viewport.height),
+    [settings.preset, viewport.width, viewport.height],
+  )
   const lineHeightPx = preset.fontSize * preset.lineHeight
 
   const [playing, setPlaying] = useState(false)
