@@ -241,6 +241,7 @@ export function PromptScreen() {
       followMode: () => engine.setMode('follow'),
       feed: (words: string[]) => sfRef.current.feed(words),
       position: () => engine.position,
+      gliding: () => engine.isGliding(),
       index: () => sfRef.current.getIndex(),
     }
     return () => {
@@ -271,6 +272,82 @@ export function PromptScreen() {
     }
     return true
   }
+
+  /**
+   * Move the script by exactly `lines` rendered lines. One press, one line — the precise
+   * counterpart to tap-to-jump, which recentres whatever line you hit and so travels further the
+   * lower on screen you tap.
+   *
+   * Holding the button stacks moves onto the last destination rather than the live position: the
+   * glide is still travelling, so counting from `engine.position` would lose whatever the
+   * previous press had not yet covered. glideTo hands back the clamped destination, so pressing
+   * on at the end of the script cannot run the count off past it.
+   */
+  const nudgeDestRef = useRef<number | null>(null)
+  const settleRafRef = useRef(0)
+  const nudgeLines = (lines: number) => {
+    const from = nudgeDestRef.current ?? engine.position
+    const dest = engine.glideTo(from + lines * lineHeightPx)
+    nudgeDestRef.current = dest
+    // Follow mode smooth-damps toward targetPosition; without this it pulls straight back to the
+    // pre-nudge target, exactly as tap-to-jump documents above.
+    engine.setTargetPosition(dest)
+    setControlsVisible(true)
+    scheduleHide(engine.playing)
+
+    // Re-anchor only once the text has actually stopped. The glide is animated, so reading the
+    // DOM now would hand Smart Follow the word the presenter was on *before* the nudge.
+    cancelAnimationFrame(settleRafRef.current)
+    const whenSettled = () => {
+      if (engine.isGliding()) {
+        settleRafRef.current = requestAnimationFrame(whenSettled)
+        return
+      }
+      nudgeDestRef.current = null
+      if (usingSFRef.current) {
+        const index = wordIndexAtAnchor(viewportRef.current, undefined, lineHeightPx)
+        if (index != null) sfRef.current.reanchorTo(index)
+      }
+    }
+    settleRafRef.current = requestAnimationFrame(whenSettled)
+  }
+  useEffect(() => () => cancelAnimationFrame(settleRafRef.current), [])
+
+  /**
+   * Wheel / trackpad scroll. A two-finger swipe on a trackpad is a wheel event, not a pointer
+   * drag, so none of the drag handling below ever saw it — on a laptop the script simply could
+   * not be moved by scrolling.
+   *
+   * Attached natively rather than via onWheel because it must be non-passive to preventDefault,
+   * and React's synthetic wheel listener is passive. It mirrors the drag lifecycle: scrubbing
+   * while the wheel is turning, then on a short idle it releases — which adopts the new position
+   * as the follow target — and tells Smart Follow which word the presenter has landed on.
+   */
+  const wheelIdleRef = useRef(0)
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      engine.setScrubbing(true)
+      engine.scrubBy(e.deltaY)
+      setControlsVisible(true)
+      window.clearTimeout(wheelIdleRef.current)
+      wheelIdleRef.current = window.setTimeout(() => {
+        engine.setScrubbing(false)
+        scheduleHide(engine.playing)
+        if (usingSFRef.current) {
+          const index = wordIndexAtAnchor(viewportRef.current, undefined, lineHeightPx)
+          if (index != null) sfRef.current.reanchorTo(index)
+        }
+      }, 140)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      window.clearTimeout(wheelIdleRef.current)
+    }
+  }, [engine, lineHeightPx, scheduleHide, viewportRef])
 
   // Pointer: drag to scrub (manual override always wins). A tap wakes the controls; a tap on
   // a line *while controls are visible* recenters that line — so a tap mid-read never yanks the text.
@@ -366,6 +443,8 @@ export function PromptScreen() {
         onSlower={() => changeSpeed(-SPEED_STEP)}
         onPlayPause={togglePlay}
         onFaster={() => changeSpeed(SPEED_STEP)}
+        onNudgeBack={() => nudgeLines(-1)}
+        onNudgeForward={() => nudgeLines(1)}
       />
     </div>
   )

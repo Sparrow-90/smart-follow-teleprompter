@@ -304,3 +304,59 @@ describe('SmoothFollowEngine — manual override in follow mode (PRD §37)', () 
     expect(e.position).toBe(posAfterGlideStart)
   })
 })
+
+/**
+ * A glide is animated, so anything that needs to read the DOM *after* the move has to know when
+ * it has actually landed. Nudging a line uses this: Smart Follow can only be told which word the
+ * presenter is now on once the text has stopped moving.
+ */
+describe('SmoothFollowEngine — knowing when a glide has landed', () => {
+  it('reports gliding while the move is still running', () => {
+    const e = new SmoothFollowEngine({ baseSpeed: 60 })
+    e.setContentMetrics(10400, 400) // maxPosition = 10000
+    e.glideTo(1000)
+    expect(e.isGliding()).toBe(true)
+    run(e, 0.05)
+    expect(e.isGliding()).toBe(true)
+    expect(e.position).toBeGreaterThan(0)
+    expect(e.position).toBeLessThan(1000)
+  })
+
+  it('reports settled once it has arrived', () => {
+    const e = new SmoothFollowEngine({ baseSpeed: 60 })
+    e.setContentMetrics(10400, 400) // maxPosition = 10000
+    e.glideTo(1000)
+    run(e, 3)
+    expect(e.isGliding()).toBe(false)
+    expect(e.position).toBe(1000)
+  })
+
+  it('settles rather than gliding forever when the destination is past the end', () => {
+    // Nudging repeatedly at the bottom of the script must not leave a glide running for good.
+    const e = new SmoothFollowEngine({ baseSpeed: 60 })
+    e.setContentMetrics(900, 400) // maxPosition = 500
+    e.glideTo(99999)
+    run(e, 3)
+    expect(e.isGliding()).toBe(false)
+    expect(e.position).toBe(500)
+  })
+
+  it('reports the destination it actually accepted, not the one asked for', () => {
+    // Holding the nudge button stacks one line onto the last destination. At the end of the
+    // script that destination has to be the clamped one, or the count runs off past the end and
+    // nudging back does nothing for several presses.
+    const e = new SmoothFollowEngine({ baseSpeed: 60 })
+    e.setContentMetrics(900, 400) // maxPosition = 500
+    expect(e.glideTo(99999)).toBe(500)
+    expect(e.glideTo(-99999)).toBe(0)
+    expect(e.glideTo(250)).toBe(250)
+  })
+
+  it('is not gliding after a finger cancels the move', () => {
+    const e = new SmoothFollowEngine({ baseSpeed: 60 })
+    e.setContentMetrics(10400, 400) // maxPosition = 10000
+    e.glideTo(1000)
+    e.setScrubbing(true)
+    expect(e.isGliding()).toBe(false)
+  })
+})

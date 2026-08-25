@@ -103,10 +103,24 @@ export class SmoothFollowEngine {
     return this.maxPosition < Infinity && this.position >= this.maxPosition - 0.5
   }
 
-  /** Eased one-shot move to an absolute position (Restart / tap-to-jump). Manual scrub cancels it. */
-  glideTo(targetPx: number): void {
+  /**
+   * True while a glide is still travelling. A glide is animated, so anything that must read the
+   * DOM *after* the move has to wait for this to go false — nudging a line does, because Smart
+   * Follow can only be told which word the presenter is on once the text has stopped moving.
+   */
+  isGliding(): boolean {
+    return this.gliding
+  }
+
+  /**
+   * Eased one-shot move to an absolute position (Restart / tap-to-jump / nudge). Manual scrub
+   * cancels it. Returns the destination actually accepted — clamped to the script — so a caller
+   * stacking moves (holding the nudge button) counts from where the text will really stop.
+   */
+  glideTo(targetPx: number): number {
     this.glideTarget = clamp(targetPx, 0, this.maxPosition)
     this.gliding = true
+    return this.glideTarget
   }
 
   // Phase 2 forward-compat:

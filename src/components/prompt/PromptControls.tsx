@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { cn } from '../ui/cn'
 
 interface PromptControlsProps {
@@ -10,6 +11,62 @@ interface PromptControlsProps {
   onSlower: () => void
   onPlayPause: () => void
   onFaster: () => void
+  /** Move the script exactly one rendered line back toward the start. */
+  onNudgeBack: () => void
+  /** Move the script exactly one rendered line on toward the end. */
+  onNudgeForward: () => void
+}
+
+/** Held-button repeat: long enough that a normal press is unmistakably one line. */
+const HOLD_DELAY = 450
+const HOLD_REPEAT = 180
+
+/**
+ * A button that fires once on press and then repeats while held. Repeat is driven from
+ * pointerdown rather than click so a held finger keeps moving the script, and is cancelled on
+ * up/leave/cancel — a finger sliding off the button must not leave it running.
+ */
+function HoldButton({
+  className,
+  label,
+  onFire,
+  children,
+}: {
+  className: string
+  label: string
+  onFire: () => void
+  children: React.ReactNode
+}) {
+  const timers = useRef<{ delay?: number; repeat?: number }>({})
+  const stop = () => {
+    window.clearTimeout(timers.current.delay)
+    window.clearInterval(timers.current.repeat)
+    timers.current = {}
+  }
+  useEffect(() => stop, [])
+  return (
+    <button
+      className={className}
+      aria-label={label}
+      title={label}
+      onPointerDown={(e) => {
+        // The controls sit inside the viewport, which treats any pointerdown as the start of a
+        // drag — and starting a drag calls setScrubbing(true), which cancels the very glide this
+        // press just began. preventDefault does not stop that; the event has to not reach it.
+        e.preventDefault()
+        e.stopPropagation()
+        onFire()
+        timers.current.delay = window.setTimeout(() => {
+          timers.current.repeat = window.setInterval(onFire, HOLD_REPEAT)
+        }, HOLD_DELAY)
+      }}
+      onPointerUp={(e) => { e.stopPropagation(); stop() }}
+      onPointerLeave={stop}
+      onPointerCancel={(e) => { e.stopPropagation(); stop() }}
+    >
+      {children}
+    </button>
+  )
 }
 
 const iconBtn =
@@ -27,6 +84,8 @@ export function PromptControls({
   onSlower,
   onPlayPause,
   onFaster,
+  onNudgeBack,
+  onNudgeForward,
 }: PromptControlsProps) {
   return (
     <div
@@ -84,6 +143,29 @@ export function PromptControls({
             +
           </button>
         )}
+
+        {/* Nudge: one rendered line per press. Stacked so the row stays short in manual mode,
+            which already carries five controls. */}
+        <div className="ml-1 flex flex-col gap-1.5">
+          <HoldButton
+            className={cn(iconBtn, 'h-9 w-12')}
+            label="Back one line"
+            onFire={onNudgeBack}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+              <path d="m6 15 6-6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </HoldButton>
+          <HoldButton
+            className={cn(iconBtn, 'h-9 w-12')}
+            label="Forward one line"
+            onFire={onNudgeForward}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+              <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </HoldButton>
+        </div>
       </div>
       {showSpeed && (
         <div className="mt-3 text-center text-xs tracking-wide text-fg-muted tabular-nums">
