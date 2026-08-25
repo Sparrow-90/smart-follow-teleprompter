@@ -11,9 +11,10 @@ interface SetupPreviewProps {
 }
 
 // Previews are shrunk from the real Prompt Mode sizes so the whole sample fits the panel.
-// Tuned against the largest preset: at 0.5 the Distance sample filled the panel to within a few
-// pixels and crowded the caption. The preview only has to show how the presets differ.
-const PREVIEW_SCALE = 0.42
+// Tuned against the largest preset — Distance is 100px, and anything above ~0.3 makes its sample
+// tall enough to push the panel open and shove the rest of Setup around. One shared factor, so
+// the three previews stay in true proportion to each other, which is the whole point of them.
+const PREVIEW_SCALE = 0.3
 
 /**
  * A static, non-scrolling preview of how the teleprompter will look with the chosen preset.

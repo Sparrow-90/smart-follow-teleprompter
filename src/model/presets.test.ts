@@ -76,8 +76,11 @@ describe('PRESETS', () => {
 
   it('lets Distance use nearly the whole reference tablet', () => {
     // The complaint that started this: a column that used ~74% of the iPad, with the text sized
-    // to match, could not be read from across the room.
+    // to match, could not be read from across the room. Checked on the device twice — 76px was
+    // still short, so Distance sits near the practical ceiling for a 1194px-wide tablet. Past
+    // ~110px the lines break up: under three words each, which reads worse however large it is.
     expect(PRESETS.distance.columnWidth / REFERENCE_VIEWPORT.width).toBeGreaterThan(0.9)
-    expect(PRESETS.distance.fontSize).toBeGreaterThanOrEqual(72)
+    expect(PRESETS.distance.fontSize).toBeGreaterThanOrEqual(96)
+    expect(PRESETS.distance.fontSize).toBeLessThanOrEqual(110)
   })
 })

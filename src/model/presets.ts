@@ -39,10 +39,12 @@ export const PRESETS: Record<Preset, PresetStyle> = {
   distance: {
     label: 'Distance',
     helper: 'Device further away — larger text.',
-    fontSize: 76,
+    // Near the practical ceiling for a 1194px tablet: the column below is all the width there
+    // is, so past ~110px the lines fall under three words each and read worse however large.
+    fontSize: 100,
     lineHeight: 1.5,
-    columnWidth: 1100,
-    baseSpeed: 90,
+    columnWidth: 1140,
+    baseSpeed: 118,
   },
 }
 
