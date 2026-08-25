@@ -6,6 +6,7 @@ import {
   isEmptyDoc,
   serializeElement,
 } from '../../model/document'
+import { reflowPastedText } from '../../model/reflowPastedText'
 
 export interface ScriptEditorHandle {
   toggleBold: () => void
@@ -126,11 +127,13 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
       }, 250)
     }
 
-    // Paste as plain text only — the editor is intentionally not a rich text editor.
+    // Paste as plain text only — the editor is intentionally not a rich text editor — and undo
+    // the line breaks a PDF copy brings with it, which would otherwise land as one paragraph per
+    // wrapped line. See reflowPastedText for what it does and, more importantly, what it won't.
     const handlePaste = (e: React.ClipboardEvent) => {
       e.preventDefault()
       const text = e.clipboardData.getData('text/plain')
-      document.execCommand('insertText', false, text)
+      document.execCommand('insertText', false, reflowPastedText(text))
     }
 
     useEffect(() => {

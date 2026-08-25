@@ -34,7 +34,8 @@ src/
   components/   editor/  setup/  prompt/  ui/
   engine/       SmoothFollowEngine (tested) + useSmoothFollow (rAF loop) + useWakeLock
   motion/       tokens — the whole app's motion vocabulary (`travel` spring / `change` ease)
-  model/        document (script model + sanitizer, tested), presets, settings
+  model/        document (script model + sanitizer, tested), reflowPastedText (tested),
+                presets, settings
   state/        store (Zustand): view, scriptDoc, settings, hydrate/persist
   persistence/  storage (IndexedDB script + localStorage prefs)
   smartfollow/  tokenizeScript, matcher, positionMap (all pure + tested);
@@ -56,6 +57,12 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
 
 ## Key decisions / gotchas
 
+- **Paste is reflowed, because a PDF copy has no paragraphs.** Copying from a PDF gives a newline
+  at every *visual* line ending, so block-per-line rendering turns one paragraph into eight.
+  `reflowPastedText` rejoins them, keying on width rather than punctuation: hard wrapping pushes
+  every line to the same length except a paragraph's last, so a short line that also closes a
+  sentence is the real break. It bails out entirely unless the text looks hard-wrapped — typed
+  text, lists and clean prose must come back untouched, and the tests pin that in both directions.
 - **Follow the matched WORD's visual line, not its paragraph** — targeting the block froze the text
   inside multi-sentence paragraphs. `PromptText wordIndices` wraps words in `<span data-w={i}>`.
 - **Motion is velocity-limited SmoothDamp** (gentle, capped speed, no snaps). Tunables: `maxFollowSpeed`,
@@ -122,6 +129,7 @@ node scripts/verify-vosk.mjs    # Vosk loads + recognizes (uses public/test-*.wa
 node scripts/verify-bundle.mjs  # builds, then guards chunk shape + PWA precache (no server needed)
 node scripts/verify-models.mjs  # guards that dist/ actually contains the Vosk models (run after a build)
 node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fake capture device)
+node scripts/verify-paste.mjs   # a PDF paste lands as the paragraphs the PDF actually had
 ```
 
 ## Roadmap / next
