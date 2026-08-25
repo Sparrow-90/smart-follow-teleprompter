@@ -118,19 +118,26 @@ export function SmartFollowLabScreen() {
     ;(window as unknown as { __voskTest?: unknown }).__voskTest = async (
       lang: string,
       wavUrl: string,
+      // When given, a grammar-constrained recognizer runs on the same audio and its phrases are
+      // returned separately — that is what scripts/verify-grammar.mjs asserts on.
+      grammar?: string[],
     ) => {
       const eng = createVoskEngine()
       const parts: string[] = []
+      const commands: string[] = []
       eng.onFinal((r) => parts.push(r.text))
+      eng.onCommandPhrase((t) => commands.push(t))
       await eng.load(VOSK_MODELS[lang])
       const ab = await (await fetch(wavUrl)).arrayBuffer()
       const ctx = new AudioContext({ sampleRate: 16000 }) // match the Vosk model rate
       const audio = await ctx.decodeAudioData(ab)
+      if (grammar) eng.startCommandRecognition(audio.sampleRate, grammar)
       eng.feedFloat(audio.getChannelData(0), audio.sampleRate)
       eng.feedFloat(new Float32Array(audio.sampleRate), audio.sampleRate) // 1s silence → flush final
       await new Promise((r) => setTimeout(r, 2500))
       eng.stop()
-      return parts.join(' ').trim()
+      const open = parts.join(' ').trim()
+      return grammar ? { open, grammar: commands.join(' ').trim() } : open
     }
   }, [])
 

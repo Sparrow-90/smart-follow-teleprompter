@@ -32,6 +32,9 @@
 /* Expose the semantic tokens to Tailwind utilities (bg-bg, text-fg, border-border, …). */
 @theme inline {
   --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+  /* Exists solely for the byline under the PROMPTLY lockup. The mark itself is vector art
+     (components/ui/Wordmark), not text, so no display face is needed. */
+  --font-byline: 'Urbanist Variable', Urbanist, var(--font-sans);
   --color-bg: var(--color-bg);
   --color-fg: var(--color-fg);
   --color-fg-muted: var(--color-fg-muted);

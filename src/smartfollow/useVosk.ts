@@ -11,6 +11,17 @@ interface Options {
   lang: string
   windowWords?: number
   onWords: (recentWords: string[], transcript: string) => void
+  /**
+   * Phrases the grammar-constrained recognizer allows. Passing them starts a second recognizer on
+   * the same model, decoding only those — see voiceCommands.commandGrammarFor for why.
+   */
+  grammar?: string[]
+  /**
+   * A complete phrase from that recognizer. Deliberately NOT routed through the rolling word
+   * window: the window drives position matching, and a command phrase pushed into it would be
+   * matched against the script as if the presenter had read it aloud.
+   */
+  onCommandPhrase?: (text: string) => void
 }
 
 /** Which half of the start sequence gave out — the two have completely different remedies. */
@@ -32,7 +43,13 @@ export interface VoskController {
   resetWindow: () => void
 }
 
-export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskController {
+export function useVosk({
+  lang,
+  windowWords = 8,
+  onWords,
+  grammar,
+  onCommandPhrase,
+}: Options): VoskController {
   const [listening, setListening] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,6 +67,10 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
   const partialSkipRef = useRef(0)
   const onWordsRef = useRef(onWords)
   onWordsRef.current = onWords
+  const onCommandPhraseRef = useRef(onCommandPhrase)
+  onCommandPhraseRef.current = onCommandPhrase
+  const grammarRef = useRef(grammar)
+  grammarRef.current = grammar
   const langRef = useRef(lang)
   langRef.current = lang
 
@@ -82,6 +103,7 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
       if (!engineRef.current) {
         const eng = createVoskEngine()
         eng.onPartial((p) => emit(p))
+        eng.onCommandPhrase((text) => onCommandPhraseRef.current?.(text))
         eng.onFinal((r) => {
           const words = r.text.split(/\s+/).filter(Boolean)
           // A reset mid-utterance also applies to that utterance's final transcript.
@@ -113,7 +135,7 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
       finalWordsRef.current = []
       partialWordsRef.current = []
       partialSkipRef.current = 0
-      eng.startRecognition()
+      eng.startRecognition(grammarRef.current)
       setListening(true)
     } catch (e) {
       // The mic may already be live — a failed download must not stand the recording indicator

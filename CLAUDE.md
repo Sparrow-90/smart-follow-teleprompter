@@ -75,6 +75,14 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   inside multi-sentence paragraphs. `PromptText wordIndices` wraps words in `<span data-w={i}>`.
 - **Motion is velocity-limited SmoothDamp** (gentle, capped speed, no snaps). Tunables: `maxFollowSpeed`,
   `followSmoothTime` in `SmoothFollowEngine`.
+- **Commands use a GRAMMAR recognizer, not open speech.** A second `KaldiRecognizer` runs on the
+  same loaded model, constrained to the command phrases (`smartfollow/voiceCommands.commandGrammarFor`).
+  Open-vocabulary recognition of a short command is unreliable in Polish: asked to find "klik góra"
+  among ~280k words it returns *"jeśli góra"*, or nothing — which is why four different wake words
+  all failed before this. The grammar chooses between three phrases and `[unk]`, and gets it right.
+  `[unk]` is **mandatory**: without it every utterance is force-fit to the nearest phrase and
+  reading the script aloud fires commands continuously. Never mix languages in one grammar — every
+  word must be in the loaded model's lexicon. `verify-grammar.mjs` pins all of this.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -139,7 +147,15 @@ node scripts/verify-models.mjs  # guards that dist/ actually contains the Vosk m
 node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fake capture device)
 node scripts/verify-paste.mjs   # a PDF paste lands as the paragraphs the PDF actually had
 node scripts/verify-preset-size.mjs # presets fill the screen; lineHeightPx matches what renders
+node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the script (no mic needed)
+node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot
 ```
+
+**Debugging what the recognizer actually heard:** open the app with `?debug=stt` and enter
+Prompt Mode — a readout in the corner lists each recognized window, newest first: `G` lines come
+from the grammar recognizer, `·` from open speech, green where a command matched. The models have
+a closed lexicon, so a wake word outside it can never be returned however clearly it is spoken;
+this is the only way to see what comes back instead.
 
 ## Roadmap / next
 

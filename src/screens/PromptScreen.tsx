@@ -8,12 +8,26 @@ import { FocusZone } from '../components/prompt/FocusZone'
 import { PromptControls } from '../components/prompt/PromptControls'
 import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
+import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
 import { wordIndexAtAnchor, firstWordIndexIn } from '../smartfollow/positionMap'
 
 const MIN_SPEED = 0.4
 const MAX_SPEED = 3.0
 const SPEED_STEP = 0.2
 const HIDE_DELAY = 3500
+/** Lines a spoken command moves. More than the button — see the command handler for why. */
+const VOICE_NUDGE_LINES = 2
+
+/**
+ * Speech readout, opened with ?debug=stt. Shows what the recognizer ACTUALLY returned, which is
+ * the only way to find out why a wake word does not fire on a given voice — the models have a
+ * closed lexicon, so a word outside it comes back as something else entirely, and which
+ * something cannot be worked out anywhere but on the device.
+ *
+ * A query param rather than a hash, because the hash already routes #lab.
+ */
+const DEBUG_STT =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === 'stt'
 
 /** The live viewport, so preset sizes can be fitted to the screen the presenter is reading. */
 function useViewportSize() {
@@ -63,6 +77,9 @@ export function PromptScreen() {
 
   useWakeLock()
 
+  // nudgeLines and resumeFollowing are defined below this call; a ref keeps the hook's onCommand
+  // stable and sidesteps the temporal-dead-zone this would otherwise hit.
+  const commandHandlerRef = useRef<(command: VoiceCommand) => void>(() => {})
   const sf = useSmartFollow({
     doc: scriptDoc,
     engine,
@@ -70,7 +87,32 @@ export function PromptScreen() {
     lang: settings.language,
     lineHeightPx,
     mirror: settings.mirror,
+    onCommand: (command) => commandHandlerRef.current(command),
+    // Written straight into the DOM rather than through state: this fires on every STT partial,
+    // and re-rendering the whole script at that rate would be a real cost for a debug aid.
+    onHeard: DEBUG_STT
+      ? (words, command) => {
+          const el = heardRef.current
+          if (!el) return
+          // The grammar recognizer marks its own lines, so the two streams can be told apart:
+          // if commands only ever fire on `G` lines, the open-vocabulary path is the weak one.
+          const fromGrammar = words[0] === 'grammar:'
+          const said = (fromGrammar ? words.slice(1) : words).join(' ')
+          const line = `${fromGrammar ? 'G ' : '· '}${command ? `[${command}] ` : ''}${said}`
+          if (el.firstChild?.textContent === line) return // same partial repeated; don't spam
+          const row = document.createElement('div')
+          row.textContent = line
+          if (command) row.style.color = '#4ade80'
+          else if (fromGrammar) row.style.color = '#93c5fd'
+          el.prepend(row)
+          while (el.childElementCount > 10) el.lastElementChild?.remove()
+        }
+      : undefined,
   })
+  const heardRef = useRef<HTMLDivElement>(null)
+  // What the last spoken command did, shown briefly so the presenter can see they were heard.
+  const [commandFlash, setCommandFlash] = useState<string | null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Why Smart Follow gave up, kept once it has. The mic and the model fail for unrelated reasons
   // and have unrelated remedies, so the chip must not blame the mic for a failed download.
   const [sfFailure, setSfFailure] = useState<'mic' | 'model' | null>(null)
@@ -108,12 +150,17 @@ export function PromptScreen() {
     if (usingSFRef.current) {
       // Smart Follow: play = start listening/following, pause = stop listening.
       const s = sfRef.current
-      if (s.listening) {
-        s.stop()
+      if (!s.listening) {
+        s.start()
+        setPlaying(true)
+        scheduleHide(true)
+      } else if (s.following) {
+        // Pause, but stay listening — otherwise "Promptly go" could never be heard.
+        s.pauseFollowing()
         setPlaying(false)
         scheduleHide(false)
       } else {
-        s.start()
+        s.resumeFollowing()
         setPlaying(true)
         scheduleHide(true)
       }
@@ -206,6 +253,9 @@ export function PromptScreen() {
     const pause = () => {
       if (usingSFRef.current) {
         if (sfRef.current.listening) {
+          // Deliberately stop(), not pauseFollowing(): holding the microphone open behind a
+          // backgrounded tab is both a privacy problem and a Safari suspension bug. Only a
+          // pause the presenter asked for keeps listening.
           sfRef.current.stop()
           setPlaying(false)
           setControlsVisible(true)
@@ -243,11 +293,14 @@ export function PromptScreen() {
       position: () => engine.position,
       gliding: () => engine.isGliding(),
       index: () => sfRef.current.getIndex(),
+      lineHeight: () => lineHeightPx,
+      following: () => sfRef.current.following,
+      pause: () => sfRef.current.pauseFollowing(),
     }
     return () => {
       delete (window as unknown as Record<string, unknown>).__prompter
     }
-  }, [engine])
+  }, [engine, lineHeightPx])
 
   // Glide the tapped line into the Focus Zone (~40% of the viewport height).
   const jumpToLineAt = (x: number, y: number): boolean => {
@@ -312,6 +365,44 @@ export function PromptScreen() {
     settleRafRef.current = requestAnimationFrame(whenSettled)
   }
   useEffect(() => () => cancelAnimationFrame(settleRafRef.current), [])
+
+  /**
+   * A spoken command. "Up" moves the reading position back up the script — the same call as the
+   * onNudgeBack button, so voice and touch land on one code path. The sign is intentional.
+   *
+   * Voice moves further than the button on purpose. Pressing the button is precise and repeatable
+   * — you can tap it three times while watching the text. Speaking a command costs a phrase and a
+   * recognition round-trip, so a single line rarely gets the presenter back to the line they
+   * fumbled, and saying it again is slow enough to be visible on camera. Two lines is the useful
+   * unit for recovery; the button stays at one for fine adjustment.
+   */
+  commandHandlerRef.current = (command: VoiceCommand) => {
+    // The flash renders inside PromptChrome, which auto-hides. nudgeLines reveals it for the two
+    // movement commands, but a spoken resume arrives when the chrome has long since faded — so
+    // without this the one confirmation the presenter gets is invisible exactly when it matters.
+    setControlsVisible(true)
+    if (command === 'resume') {
+      sfRef.current.resumeFollowing()
+      setPlaying(true)
+      scheduleHide(true)
+    } else {
+      nudgeLines(command === 'back' ? -VOICE_NUDGE_LINES : VOICE_NUDGE_LINES)
+    }
+    setCommandFlash(
+      command === 'back'
+        ? `↑ back ${VOICE_NUDGE_LINES} lines`
+        : command === 'forward'
+          ? `↓ forward ${VOICE_NUDGE_LINES} lines`
+          : '● Following',
+    )
+    if (flashTimer.current) clearTimeout(flashTimer.current)
+    flashTimer.current = setTimeout(() => setCommandFlash(null), 1400)
+  }
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+    }
+  }, [])
 
   /**
    * Wheel / trackpad scroll. A two-finger swipe on a trackpad is a wheel event, not a pointer
@@ -411,11 +502,13 @@ export function PromptScreen() {
           ? 'Loading model…'
           : !sf.listening
             ? 'Smart Follow'
-            : sf.status === 'finding'
-              ? 'Finding your place…'
-              : sf.status === 'paused'
-                ? 'Smart Follow paused'
-                : '● Following'
+            : !sf.following
+              ? `Paused — say "${resumePhraseFor(settings.language)}"`
+              : sf.status === 'finding'
+                ? 'Finding your place…'
+                : sf.status === 'paused'
+                  ? 'Smart Follow paused'
+                  : '● Following'
 
   return (
     <div
@@ -433,7 +526,19 @@ export function PromptScreen() {
         wordIndices={usingSmartFollow}
       />
       <FocusZone readingMarker={settings.readingMarker} />
-      <PromptChrome visible={controlsVisible} onExit={exit} status={sfStatusLabel} />
+      {DEBUG_STT && (
+        <div className="pointer-events-none absolute right-3 bottom-3 z-40 max-w-[70vw] rounded-lg bg-black/80 p-3 font-mono text-[11px] leading-snug text-white/80">
+          <div className="mb-1 text-white/40">
+            heard, newest first · G = grammar recognizer, · = open speech · green = matched
+          </div>
+          <div ref={heardRef} />
+        </div>
+      )}
+      <PromptChrome
+        visible={controlsVisible}
+        onExit={exit}
+        status={commandFlash ?? sfStatusLabel}
+      />
       <PromptControls
         visible={controlsVisible}
         playing={playing}

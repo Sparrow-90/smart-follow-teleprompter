@@ -28,10 +28,18 @@ const doc: ScriptDoc = {
   ],
 } as ScriptDoc
 
-function mount(engine: SmoothFollowEngine) {
+function mount(engine: SmoothFollowEngine, onCommand?: (c: string) => void) {
   const viewportRef = { current: document.createElement('div') }
   return renderHook(() =>
-    useSmartFollow({ doc, engine, viewportRef, lang: 'pl', lineHeightPx: 60, mirror: false }),
+    useSmartFollow({
+      doc,
+      engine,
+      viewportRef,
+      lang: 'pl',
+      lineHeightPx: 60,
+      mirror: false,
+      onCommand: onCommand as never,
+    }),
   )
 }
 
@@ -125,5 +133,63 @@ describe('useSmartFollow — speech during a drag', () => {
     engine.setScrubbing(false)
     act(() => result.current.feed(['alpha', 'beta']))
     expect(matchPositionMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useSmartFollow — voice commands', () => {
+  it('reports the command instead of matching its words', () => {
+    const onCommand = vi.fn()
+    const { result } = mount(new SmoothFollowEngine(), onCommand)
+    act(() => result.current.feed(['promptly', 'up']))
+    expect(onCommand).toHaveBeenCalledWith('back')
+    // The command words are an instruction, not script — the matcher must never see them.
+    expect(matchPositionMock).not.toHaveBeenCalled()
+  })
+
+  it('fires once however many partials repeat the phrase', () => {
+    const onCommand = vi.fn()
+    const { result } = mount(new SmoothFollowEngine(), onCommand)
+    // Vosk resends the whole utterance on every partial; this is that, three times over.
+    act(() => result.current.feed(['promptly', 'up']))
+    act(() => result.current.feed(['promptly', 'up']))
+    act(() => result.current.feed(['promptly', 'up']))
+    expect(onCommand).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps matching local afterwards, so the next partial cannot jump the document', () => {
+    // Without the local-only guard, the emptied window makes the next one- or two-word partial
+    // score under minConfidence, which widens matchPosition's search to the whole script.
+    const { result } = mount(new SmoothFollowEngine(), () => {})
+    act(() => result.current.feed(['promptly', 'up']))
+    act(() => result.current.feed(['eta', 'theta']))
+    expect(matchPositionMock.mock.calls.at(-1)?.[3]).toMatchObject({ localOnly: true })
+  })
+
+  it('still hears a command while paused, but moves nothing else', () => {
+    const onCommand = vi.fn()
+    const engine = new SmoothFollowEngine()
+    const { result } = mount(engine, onCommand)
+    act(() => result.current.pauseFollowing())
+    expect(result.current.following).toBe(false)
+
+    // Ordinary speech is ignored entirely while paused...
+    act(() => result.current.feed(['alpha', 'beta']))
+    expect(matchPositionMock).not.toHaveBeenCalled()
+
+    // ...but "Promptly go" is the one thing that must still get through.
+    act(() => result.current.feed(['promptly', 'go']))
+    expect(onCommand).toHaveBeenCalledWith('resume')
+  })
+
+  it('pins the follow target when it pauses', () => {
+    // Follow mode smooth-damps toward targetPosition, so a pause that only stops feeding
+    // targets would let the text drift on to one it had not yet reached.
+    const engine = new SmoothFollowEngine()
+    engine.setMode('follow')
+    engine.setTargetPosition(5000)
+    const spy = vi.spyOn(engine, 'setTargetPosition')
+    const { result } = mount(engine, () => {})
+    act(() => result.current.pauseFollowing())
+    expect(spy).toHaveBeenCalledWith(engine.position)
   })
 })

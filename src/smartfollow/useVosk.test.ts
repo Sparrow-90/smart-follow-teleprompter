@@ -11,6 +11,8 @@ import { useVosk } from './useVosk'
 interface FakeEngine {
   partial: (text: string) => void
   final: (text: string) => void
+  /** A phrase from the grammar-constrained command recognizer. */
+  commandPhrase: (text: string) => void
   /** Engine calls in the order `start()` made them — the model download is not instant in life. */
   calls: string[]
   loadImpl: () => Promise<void>
@@ -40,6 +42,9 @@ vi.mock('./stt/voskEngine', () => ({
     },
     onFinal: (cb: (r: { text: string; latencyMs: number }) => void) => {
       engine.final = (text: string) => cb({ text, latencyMs: 10 })
+    },
+    onCommandPhrase: (cb: (t: string) => void) => {
+      engine.commandPhrase = cb
     },
   }),
 }))
@@ -153,5 +158,33 @@ describe('useVosk — start order', () => {
     expect(engine.calls).toContain('stop')
     expect(hook.result.current.listening).toBe(false)
     expect(hook.result.current.error).toBe('404')
+  })
+})
+
+describe('useVosk — the grammar recognizer', () => {
+  function mountWithGrammar() {
+    const onWords = vi.fn()
+    const onCommandPhrase = vi.fn()
+    const hook = renderHook(() =>
+      useVosk({ lang: 'pl', onWords, onCommandPhrase, grammar: ['klik góra', '[unk]'] }),
+    )
+    return { hook, onWords, onCommandPhrase }
+  }
+
+  it('reports a grammar phrase on its own channel', async () => {
+    const { hook, onCommandPhrase } = mountWithGrammar()
+    await act(async () => hook.result.current.start())
+    act(() => engine.commandPhrase('klik góra'))
+    expect(onCommandPhrase).toHaveBeenCalledWith('klik góra')
+  })
+
+  it('keeps grammar phrases out of the window that drives position matching', async () => {
+    // The window is matched against the script. A command phrase pushed into it would be treated
+    // as words the presenter had read aloud, and could drag the text to wherever they appear.
+    const { hook, onWords } = mountWithGrammar()
+    await act(async () => hook.result.current.start())
+    act(() => engine.final('alpha beta'))
+    act(() => engine.commandPhrase('klik góra'))
+    expect(lastRecent(onWords)).toEqual(['alpha', 'beta'])
   })
 })

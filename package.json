@@ -1,9 +1,9 @@
 {
-  "name": "prompter",
+  "name": "promptly",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "PROMPTER — PWA teleprompter with Smart Follow (Phase 1: manual teleprompter)",
+  "description": "PROMPTLY — PWA teleprompter with Smart Follow (Phase 1: manual teleprompter)",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",
+    "@fontsource-variable/urbanist": "^5.3.0",
     "@huggingface/transformers": "^4.2.0",
     "@ricky0123/vad-web": "^0.0.30",
     "idb-keyval": "^6.2.1",

@@ -360,3 +360,36 @@ describe('SmoothFollowEngine — knowing when a glide has landed', () => {
     expect(e.isGliding()).toBe(false)
   })
 })
+
+describe('SmoothFollowEngine — destination', () => {
+  it('reports where a running glide will land, not where the text is now', () => {
+    const e = new SmoothFollowEngine()
+    e.setContentMetrics(10000, 1000)
+    e.setMode('follow')
+    e.glideTo(500)
+    e.tick(0.05) // part-way there
+    expect(e.position).toBeGreaterThan(0)
+    expect(e.position).toBeLessThan(500)
+    expect(e.destination).toBe(500)
+  })
+
+  it('reports the current position when nothing is gliding', () => {
+    const e = new SmoothFollowEngine()
+    e.setContentMetrics(10000, 1000)
+    e.setPosition(320)
+    expect(e.destination).toBe(320)
+  })
+
+  it('pinning the follow target to `destination` mid-glide leaves the text where it lands', () => {
+    // The bug this guards: pinning to `position` instead snapshots a half-finished move, the
+    // glide still completes, and follow mode then damps the text backwards to the stale pin.
+    const e = new SmoothFollowEngine()
+    e.setContentMetrics(10000, 1000)
+    e.setMode('follow')
+    e.glideTo(500)
+    e.tick(0.05)
+    e.setTargetPosition(e.destination) // what pauseFollowing does
+    for (let i = 0; i < 200; i++) e.tick(0.016) // glide lands, then follow mode has its say
+    expect(e.position).toBeCloseTo(500, 0)
+  })
+})

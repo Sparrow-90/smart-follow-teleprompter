@@ -5,6 +5,7 @@ import { travel } from '../motion/tokens'
 import { type ScriptDoc, isEmptyDoc } from '../model/document'
 import { ScriptEditor, type ScriptEditorHandle } from '../components/editor/ScriptEditor'
 import { EditorToolbar } from '../components/editor/EditorToolbar'
+import { Wordmark } from '../components/ui/Wordmark'
 import { CtaButton } from '../components/ui/CtaButton'
 
 export function EditorScreen() {
@@ -49,11 +50,19 @@ export function EditorScreen() {
     <div className="flex h-[100dvh] flex-col">
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-6 pt-5 sm:px-10">
         <header className="flex shrink-0 items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <span className="text-lg leading-none font-bold tracking-[0.15em] text-fg">PROMPTER</span>
-          {/* Muted and small so it sits quietly under the wordmark — but the name keeps its
-              capitals; it is a person's name, not a design element to be styled down. */}
-          <span className="text-[0.6875rem] leading-none tracking-[0.12em] text-fg-muted">
+        {/* The lockup, matched to Figma node 4771:414. Items are centred so the byline centres
+            under the mark; the lockup as a whole still sits left in the header. */}
+        <div className="flex flex-col items-center">
+          <Wordmark className="h-[49px] w-[176px] text-fg" />
+          {/* Byline, Figma node 4877:604: Urbanist Light 10/20, 5.3px tracking, #6a7282.
+              `capitalize` is Figma's too — it renders the stored "by" as "By".
+
+              The grey is Figma's literal brand value rather than a theme token, and that is a
+              measured trade, not an oversight: it is 4.84:1 on the light background but only
+              4.09:1 on the dark one, short of the 4.5:1 WCAG AA wants for 10px text. Kept because
+              the wordmark lockup was specified 1:1 and this is a decorative byline, not content.
+              `text-fg-muted` (7.66:1 on dark) is the accessible alternative if that changes. */}
+          <span className="font-byline text-[10px] leading-5 font-light tracking-[5.3px] text-[#6a7282] capitalize">
             by Mateusz Wróbel
           </span>
         </div>

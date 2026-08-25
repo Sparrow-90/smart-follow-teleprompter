@@ -113,6 +113,19 @@ export class SmoothFollowEngine {
   }
 
   /**
+   * Where the text is going to come to rest: the glide destination while one is running,
+   * otherwise simply where it is now.
+   *
+   * Anything pinning the follow target has to use THIS, not `position`. `tick()` serves an
+   * in-flight glide and returns before the follow branch, so a target pinned to the live position
+   * mid-glide is ignored until the glide lands — and then fought, dragging the text back to where
+   * it happened to be when the pin was taken.
+   */
+  get destination(): number {
+    return this.gliding ? this.glideTarget : this.position
+  }
+
+  /**
    * Eased one-shot move to an absolute position (Restart / tap-to-jump / nudge). Manual scrub
    * cancels it. Returns the destination actually accepted — clamped to the script — so a caller
    * stacking moves (holding the nudge button) counts from where the text will really stop.

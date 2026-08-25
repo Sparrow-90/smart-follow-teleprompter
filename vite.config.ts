@@ -13,8 +13,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'PROMPTER',
-        short_name: 'PROMPTER',
+        name: 'PROMPTLY',
+        short_name: 'PROMPTLY',
         description: 'A minimalist teleprompter that follows the presenter.',
         theme_color: '#0a0a0a',
         background_color: '#0a0a0a',
