@@ -13,7 +13,13 @@ export interface VoskFinal {
 
 export interface VoskEngine {
   load: (modelUrl: string) => Promise<void>
+  /**
+   * Take the microphone and open the audio graph. Deliberately independent of `load` so it can
+   * run inside the user gesture that started Smart Follow — see the note on `startRecognition`.
+   */
   startMic: () => Promise<void>
+  /** Build the recognizer for the open mic's sample rate. Requires `load` to have finished. */
+  startRecognition: () => void
   /** Testable seam: feed raw PCM (e.g. decoded from a WAV) as if it came from the mic. */
   feedFloat: (samples: Float32Array, sampleRate: number) => void
   stop: () => void
@@ -77,9 +83,11 @@ export function createVoskEngine(): VoskEngine {
       audioContext = new AudioContext()
       // Safari suspends contexts created after an await — resume within the user gesture chain.
       if (audioContext.state === 'suspended') await audioContext.resume()
-      ensureRecognizer(audioContext.sampleRate)
       source = audioContext.createMediaStreamSource(stream)
       processor = audioContext.createScriptProcessor(4096, 1, 1)
+      // Until `startRecognition` runs there is no recognizer yet and these frames are dropped.
+      // That window is the model download, and dropping it is right: those are words spoken
+      // before Smart Follow was listening.
       processor.onaudioprocess = (e) => {
         try {
           recognizer?.acceptWaveform(e.inputBuffer)
@@ -93,6 +101,10 @@ export function createVoskEngine(): VoskEngine {
       source.connect(processor)
       processor.connect(mute)
       mute.connect(audioContext.destination)
+    },
+    startRecognition() {
+      if (!audioContext) throw new Error('Microphone not open')
+      ensureRecognizer(audioContext.sampleRate)
     },
     feedFloat(samples: Float32Array, sampleRate: number) {
       ensureRecognizer(sampleRate)

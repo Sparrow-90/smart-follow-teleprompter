@@ -13,10 +13,14 @@ interface Options {
   onWords: (recentWords: string[], transcript: string) => void
 }
 
+/** Which half of the start sequence gave out — the two have completely different remedies. */
+export type VoskErrorKind = 'mic' | 'model'
+
 export interface VoskController {
   listening: boolean
   loading: boolean
   error: string | null
+  errorKind: VoskErrorKind | null
   latencyMs: number
   start: () => void
   stop: () => void
@@ -32,6 +36,7 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
   const [listening, setListening] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorKind, setErrorKind] = useState<VoskErrorKind | null>(null)
   const [latencyMs, setLatencyMs] = useState(0)
 
   const engineRef = useRef<VoskEngine | null>(null)
@@ -70,6 +75,9 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
 
   const start = useCallback(async () => {
     setError(null)
+    setErrorKind(null)
+    // Everything up to the mic being live is 'mic'; everything after it is the model's fault.
+    let phase: VoskErrorKind = 'mic'
     try {
       if (!engineRef.current) {
         const eng = createVoskEngine()
@@ -90,6 +98,12 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
         engineRef.current = eng
       }
       const eng = engineRef.current
+      // Microphone first, model second. The model is a 40-50MB download on a hosted build, so
+      // loading it first puts tens of seconds between the presenter's tap and this line — and
+      // Safari will not hand over the mic, or will keep the AudioContext suspended, that far
+      // outside the gesture that asked for it. Taking the mic here keeps it in the gesture.
+      await eng.startMic()
+      phase = 'model'
       if (loadedLangRef.current !== langRef.current) {
         setLoading(true)
         await eng.load(VOSK_MODELS[langRef.current])
@@ -99,10 +113,15 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
       finalWordsRef.current = []
       partialWordsRef.current = []
       partialSkipRef.current = 0
-      await eng.startMic()
+      eng.startRecognition()
       setListening(true)
     } catch (e) {
+      // The mic may already be live — a failed download must not stand the recording indicator
+      // up on the tablet with Smart Follow switched off.
+      engineRef.current?.stop()
+      setListening(false)
       setLoading(false)
+      setErrorKind(phase)
       setError(
         e instanceof Error && e.name === 'NotAllowedError'
           ? 'Microphone permission denied — allow the mic and press Start again.'
@@ -120,5 +139,5 @@ export function useVosk({ lang, windowWords = 8, onWords }: Options): VoskContro
 
   useEffect(() => () => engineRef.current?.stop(), [])
 
-  return { listening, loading, error, latencyMs, start, stop, resetWindow }
+  return { listening, loading, error, errorKind, latencyMs, start, stop, resetWindow }
 }

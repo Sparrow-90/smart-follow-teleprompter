@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useVosk } from './useVosk'
 
@@ -11,17 +11,30 @@ import { useVosk } from './useVosk'
 interface FakeEngine {
   partial: (text: string) => void
   final: (text: string) => void
+  /** Engine calls in the order `start()` made them — the model download is not instant in life. */
+  calls: string[]
+  loadImpl: () => Promise<void>
 }
-const engine = {} as FakeEngine
+const engine = { calls: [], loadImpl: async () => {} } as unknown as FakeEngine
 
 vi.mock('./stt/voskEngine', () => ({
   VOSK_MODELS: { pl: 'model.tar.gz' },
   createVoskEngine: () => ({
     ready: true,
-    load: async () => {},
-    startMic: async () => {},
+    load: async () => {
+      engine.calls.push('load')
+      await engine.loadImpl()
+    },
+    startMic: async () => {
+      engine.calls.push('startMic')
+    },
+    startRecognition: () => {
+      engine.calls.push('startRecognition')
+    },
     feedFloat: () => {},
-    stop: () => {},
+    stop: () => {
+      engine.calls.push('stop')
+    },
     onPartial: (cb: (t: string) => void) => {
       engine.partial = cb
     },
@@ -30,6 +43,11 @@ vi.mock('./stt/voskEngine', () => ({
     },
   }),
 }))
+
+beforeEach(() => {
+  engine.calls = []
+  engine.loadImpl = async () => {}
+})
 
 function mount() {
   const onWords = vi.fn()
@@ -92,5 +110,48 @@ describe('useVosk — resetWindow', () => {
     // Vosk revised its hypothesis down to fewer words than we were told to skip.
     act(() => engine.partial('alpha'))
     expect(onWords).toHaveBeenCalledTimes(1) // nothing new to report; no crash, no stale word
+  })
+})
+
+/**
+ * Ordering, not just wiring. On a hosted build the model is a 40-50MB download, so anything
+ * awaited before the microphone is acquired happens tens of seconds outside the user gesture
+ * that started it — and Safari suspends an AudioContext constructed there. Take the mic first,
+ * download second.
+ */
+describe('useVosk — start order', () => {
+  it('opens the microphone before downloading the model', async () => {
+    const { hook } = mount()
+    await act(async () => hook.result.current.start())
+    expect(engine.calls.indexOf('startMic')).toBeLessThan(engine.calls.indexOf('load'))
+  })
+
+  it('only builds the recognizer once the model has loaded', async () => {
+    const { hook } = mount()
+    await act(async () => hook.result.current.start())
+    expect(engine.calls.indexOf('load')).toBeLessThan(engine.calls.indexOf('startRecognition'))
+  })
+
+  it('reports a failed download as the model failing, not the mic', async () => {
+    engine.loadImpl = async () => {
+      throw new Error('404')
+    }
+    const { hook } = mount()
+    await act(async () => hook.result.current.start())
+    // The mic was granted; blaming it sends the presenter to check permissions for nothing.
+    expect(hook.result.current.errorKind).toBe('model')
+  })
+
+  it('releases the microphone when the model fails to load', async () => {
+    engine.loadImpl = async () => {
+      throw new Error('404')
+    }
+    const { hook } = mount()
+    await act(async () => hook.result.current.start())
+    // The mic is already live by the time the download fails; leaving it open would strand a
+    // recording indicator on the tablet with Smart Follow visibly off.
+    expect(engine.calls).toContain('stop')
+    expect(hook.result.current.listening).toBe(false)
+    expect(hook.result.current.error).toBe('404')
   })
 })

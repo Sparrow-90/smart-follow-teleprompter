@@ -62,6 +62,14 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   `followSmoothTime` in `SmoothFollowEngine`.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
+- **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
+  `load()` → `startRecognition()`, and `startMic` deliberately needs no model. On a hosted build
+  the model is a 40–50MB download; awaiting it first strands `getUserMedia` and the `AudioContext`
+  resume tens of seconds outside the user gesture, which Safari ties them to — the prompt never
+  appears, or it does and the context stays suspended so nothing is ever heard. On localhost the
+  download is instant, so this only ever breaks in production. Pinned by `useVosk.test.ts`
+  ("start order") and `verify-mic-order.mjs`. `start()`'s catch must also `stop()` — the mic can
+  already be live when the download fails.
 - **Models are gitignored** (`public/models/`, ~40–50MB each). Run `scripts/fetch-models.sh` after clone.
   **Hosting builds from a clean clone, so they must fetch them too** — that is why `vercel-build`
   is `fetch-models.sh && build && verify-models.mjs`, and why `vercel.json` points the build
@@ -113,6 +121,7 @@ node scripts/verify-paragraph.mjs # follow advances within a paragraph
 node scripts/verify-vosk.mjs    # Vosk loads + recognizes (uses public/test-*.wav from `say`)
 node scripts/verify-bundle.mjs  # builds, then guards chunk shape + PWA precache (no server needed)
 node scripts/verify-models.mjs  # guards that dist/ actually contains the Vosk models (run after a build)
+node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fake capture device)
 ```
 
 ## Roadmap / next

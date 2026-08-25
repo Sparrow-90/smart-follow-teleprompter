@@ -44,11 +44,13 @@ export function PromptScreen() {
     lineHeightPx,
     mirror: settings.mirror,
   })
-  const [micFailed, setMicFailed] = useState(false)
+  // Why Smart Follow gave up, kept once it has. The mic and the model fail for unrelated reasons
+  // and have unrelated remedies, so the chip must not blame the mic for a failed download.
+  const [sfFailure, setSfFailure] = useState<'mic' | 'model' | null>(null)
   useEffect(() => {
-    if (sf.error) setMicFailed(true)
-  }, [sf.error])
-  const usingSmartFollow = settings.smartFollow && !micFailed
+    if (sf.error) setSfFailure(sf.errorKind ?? 'mic')
+  }, [sf.error, sf.errorKind])
+  const usingSmartFollow = settings.smartFollow && !sfFailure
 
   // Refs so long-lived callbacks/effects see the latest without re-subscribing every render.
   const sfRef = useRef(sf)
@@ -295,8 +297,10 @@ export function PromptScreen() {
   }
 
   const sfStatusLabel =
-    settings.smartFollow && micFailed
-      ? 'Manual — mic unavailable'
+    settings.smartFollow && sfFailure
+      ? sfFailure === 'model'
+        ? 'Manual — speech model unavailable'
+        : 'Manual — mic unavailable'
       : !usingSmartFollow
         ? null
         : sf.loading

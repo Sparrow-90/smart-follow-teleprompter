@@ -5,7 +5,7 @@ import type { ScriptDoc } from '../model/document'
 import { tokenizeScript } from './tokenizeScript'
 import { matchPosition } from './matcher'
 import { wordProgressTarget, applyBackwardDeadband } from './positionMap'
-import { useVosk } from './useVosk'
+import { useVosk, type VoskErrorKind } from './useVosk'
 
 /**
  * How long after a manual re-anchor the matcher stays local-only. Roughly the length of an
@@ -32,6 +32,7 @@ export interface SmartFollowController {
   listening: boolean
   loading: boolean
   error: string | null
+  errorKind: VoskErrorKind | null
   latencyMs: number
   start: () => void
   stop: () => void
@@ -152,6 +153,7 @@ export function useSmartFollow({
     listening: vosk.listening,
     loading: vosk.loading,
     error: vosk.error,
+    errorKind: vosk.errorKind,
     latencyMs: vosk.latencyMs,
     start,
     stop,
