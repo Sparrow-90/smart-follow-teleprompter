@@ -63,6 +63,11 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Models are gitignored** (`public/models/`, ~40–50MB each). Run `scripts/fetch-models.sh` after clone.
+  **Hosting builds from a clean clone, so they must fetch them too** — that is why `vercel-build`
+  is `fetch-models.sh && build && verify-models.mjs`, and why `vercel.json` points the build
+  command at it. Without the fetch the model 404s, `load()` throws *before* `startMic()`, and the
+  browser never even asks for the mic — Smart Follow looks dead with no permission prompt.
+  `verify-models.mjs` fails the build rather than shipping that silently.
 - **`vosk-browser` is dynamically imported** in `stt/voskEngine.ts`. Its `dist/vosk.js` is 5.8MB; a
   static import puts it in the entry chunk, past workbox's 2MB precache limit, and the PWA build
   fails outright. It is pinned to a `vosk-engine-*` chunk (`build.rollupOptions.output.manualChunks`)
@@ -107,6 +112,7 @@ node scripts/verify-follow.mjs  # gentle line-by-line follow
 node scripts/verify-paragraph.mjs # follow advances within a paragraph
 node scripts/verify-vosk.mjs    # Vosk loads + recognizes (uses public/test-*.wav from `say`)
 node scripts/verify-bundle.mjs  # builds, then guards chunk shape + PWA precache (no server needed)
+node scripts/verify-models.mjs  # guards that dist/ actually contains the Vosk models (run after a build)
 ```
 
 ## Roadmap / next
