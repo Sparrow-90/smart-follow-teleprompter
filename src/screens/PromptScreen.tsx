@@ -470,7 +470,15 @@ export function PromptScreen() {
   const onChrome = (e: React.PointerEvent) =>
     !!(e.target as Element).closest?.('[data-prompt-chrome]')
   const onPointerDown = (e: React.PointerEvent) => {
-    if (onChrome(e)) return
+    if (onChrome(e)) {
+      // Keep the chrome up for the press. The auto-hide is armed for 3.5s while playing, and if
+      // it expired between this pointerdown and the click it would strip the button's
+      // `pointer-events` and swallow the press — the very failure this guard exists to stop,
+      // arriving from the timer instead of from the tap. A slide-off fires no handler, so
+      // re-arm here rather than merely cancelling.
+      revealControls()
+      return
+    }
     drag.current = { active: true, pointerId: e.pointerId, lastY: e.clientY, moved: 0 }
     engine.setScrubbing(true)
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
@@ -483,6 +491,18 @@ export function PromptScreen() {
     drag.current.lastY = e.clientY
     drag.current.moved += Math.abs(dy)
     engine.scrubBy(-dy)
+  }
+  /**
+   * iOS cancels a pointer out from under you — a swipe from the screen edge, a notification, a
+   * stray fourth touch — and no pointerup follows. Without this the drag stays latched and so
+   * does `setScrubbing(true)`, which pins the engine's target velocity at zero: the script
+   * freezes and no button can revive it, because a press on the chrome no longer runs any of
+   * this. The release has to have its own handler.
+   */
+  const onPointerCancel = (e: React.PointerEvent) => {
+    if (!isDragPointer(e)) return
+    drag.current.active = false
+    engine.setScrubbing(false)
   }
   const onPointerUp = (e: React.PointerEvent) => {
     // Nothing to do for a pointer that never started a drag here — a press on a button, or the
@@ -551,6 +571,7 @@ export function PromptScreen() {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
     >
       <PromptText
         doc={scriptDoc}

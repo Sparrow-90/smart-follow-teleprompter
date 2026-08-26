@@ -90,12 +90,15 @@ export function PromptControls({
   return (
     <div
       data-prompt-chrome
-      // Only the buttons are live; the gaps between them and the speed readout below stay
-      // transparent to the press, so the script underneath can still be dragged there. Same
-      // reasoning as PromptChrome, where the dead area would be the full width of the screen.
+      // Solid, unlike PromptChrome — the opposite call, for the opposite geometry. This cluster
+      // shrink-wraps its buttons, so keeping the root live costs only a few hundred px of dead
+      // area at the bottom of the screen, and it buys the near-miss: a thumb that misses Play by
+      // the 16px gap is swallowed here. Transparent, that press falls through to the script and
+      // is read as a tap on it — recentring whatever line is underneath, or, where no line is,
+      // dismissing the chrome, which is this whole bug over again.
       className={cn(
-        'pointer-events-none absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300',
-        visible ? 'opacity-100 [&_button]:pointer-events-auto' : 'opacity-0',
+        'absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300',
+        visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >
       <div className="flex items-center gap-4">

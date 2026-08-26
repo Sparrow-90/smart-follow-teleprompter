@@ -152,7 +152,51 @@ const bandDrag = await (async () => {
 })()
 check('a drag begun in the top bar still scrubs the script', bandDrag > 50, `${bandDrag.toFixed(1)}px`)
 
-console.log('6. One tap on Exit — a swallowed press here traps the presenter in Prompt Mode')
+console.log('6. A press that lands between the buttons is swallowed')
+// The cluster's root is solid on purpose: a thumb landing in the 16px gap beside Play must do
+// nothing, rather than falling through to the script and being read as a tap on it. Both halves
+// matter — the script must not move, and the chrome must not vanish, which is what a
+// fall-through does here where no line sits under the gap. Pressed with the mouse deliberately:
+// Chromium's touch adjustment snaps a near-miss onto the button and hides the fall-through.
+const gap = await page.evaluate(() => {
+  const play = document.querySelector('button[aria-label="Play"], button[aria-label="Pause"]')
+  const r = play.getBoundingClientRect()
+  return { x: Math.round(r.left - 8), y: Math.round(r.top + r.height / 2) }
+})
+const beforeGap = await offset()
+await page.mouse.move(gap.x, gap.y)
+await page.mouse.down()
+await page.mouse.up()
+await sleep(800)
+const gapMoved = Math.abs((await offset()) - beforeGap)
+check('a press in the gap beside Play does not move the script', gapMoved < 2, `${gapMoved.toFixed(1)}px`)
+check('chrome still up after the near-miss', await chromeVisible())
+
+console.log('7. A cancelled pointer releases the drag instead of freezing the script')
+// iOS cancels a pointer mid-drag (edge swipe, notification) and no pointerup follows. If nothing
+// releases it the engine stays scrubbing, which pins its target velocity at zero and the script
+// never moves again. Driven over CDP so the cancel is a real one — a synthetic PointerEvent
+// carries a pointerId the browser does not know, and setPointerCapture throws on it.
+const cdp = await page.context().newCDPSession(page)
+await cdp.send('Input.dispatchTouchEvent', {
+  type: 'touchStart',
+  touchPoints: [{ x: 600, y: 500 }],
+})
+await cdp.send('Input.dispatchTouchEvent', {
+  type: 'touchMove',
+  touchPoints: [{ x: 600, y: 470 }],
+})
+await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+await sleep(200)
+const beforeResume = await offset()
+await tap(page.getByRole('button', { name: 'Play' }))
+await sleep(1200)
+const resumed = Math.abs((await offset()) - beforeResume)
+check('the script still scrolls after a cancelled drag', resumed > 20, `${resumed.toFixed(1)}px`)
+await tap(page.getByRole('button', { name: 'Pause' }))
+await sleep(400)
+
+console.log('8. One tap on Exit — a swallowed press here traps the presenter in Prompt Mode')
 await tap(page.getByRole('button', { name: 'Exit' }))
 await sleep(400)
 check(

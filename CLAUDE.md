@@ -118,7 +118,12 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   keyed to its `pointerId` — two fingers are ordinary on a tablet, and without it the finger that
   taps a button ends the drag the other one is still making. `verify-tap-controls.mjs` pins all
   of it, with **touchscreen taps**: a mouse click is dispatched regardless of the hide and does
-  not reproduce the swallowed press.
+  not reproduce the swallowed press. The two chrome roots then go opposite ways *for the same
+  reason* — geometry. The top bar is full-width, so it stays transparent with only its button
+  live; the control cluster shrink-wraps, so it stays solid and swallows the near-miss that would
+  otherwise fall through and dismiss the chrome. And the viewport needs `onPointerCancel`: iOS
+  cancels a pointer with no pointerup to follow, and a drag left latched pins the engine's target
+  velocity at zero — the script freezes and no button can revive it.
 - **Framer owns `transform`; so does the scroll engine — never both on one element.** No `motion.*`
   may touch `contentRef`, the `[data-w]` word spans, or `FocusZone` (a static gradient *precisely* to
   avoid per-frame work). Prompt Mode is entered by an early `return` in `App.tsx` placed *before*
