@@ -111,10 +111,14 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   "tapped empty space" case — so pressing Play hid the whole interface, and hiding it puts
   `pointer-events-none` on the button *before* the browser dispatches `click`, swallowing the
   press entirely. Play looked dead unless the finger drifted the 6px that makes it a drag instead.
-  Both chrome roots carry `data-prompt-chrome` and `onPointerDown`/`onPointerUp` early-return on
-  it — guard both ends, or a second finger already dragging leaves `drag.active` true and the
-  pointerup still hides. `verify-tap-controls.mjs` pins it, with **touchscreen taps**: a mouse
-  click does not reproduce the swallowed click.
+  Both chrome roots carry `data-prompt-chrome`, and `onPointerDown` early-returns on it. The
+  roots are `pointer-events-none` with only their **buttons** live, and that is load-bearing, not
+  styling: the top bar spans the full width, so if a press on the bar itself counted as chrome, a
+  48px band across the whole screen would go dead to dragging and to tap-to-jump. A drag is also
+  keyed to its `pointerId` — two fingers are ordinary on a tablet, and without it the finger that
+  taps a button ends the drag the other one is still making. `verify-tap-controls.mjs` pins all
+  of it, with **touchscreen taps**: a mouse click is dispatched regardless of the hide and does
+  not reproduce the swallowed press.
 - **Framer owns `transform`; so does the scroll engine — never both on one element.** No `motion.*`
   may touch `contentRef`, the `[data-w]` word spans, or `FocusZone` (a static gradient *precisely* to
   avoid per-frame work). Prompt Mode is entered by an early `return` in `App.tsx` placed *before*

@@ -442,7 +442,14 @@ export function PromptScreen() {
 
   // Pointer: drag to scrub (manual override always wins). A tap wakes the controls; a tap on
   // a line *while controls are visible* recenters that line — so a tap mid-read never yanks the text.
-  const drag = useRef({ active: false, lastY: 0, moved: 0 })
+  /**
+   * `pointerId` so a drag belongs to the finger that started it. Two fingers are ordinary on a
+   * tablet — one holding the script, one reaching for a button — and without it the second
+   * finger's lift ends the first finger's drag: scrubbing released, Smart Follow re-anchored to
+   * wherever the drag happened to be, and the still-pressed thumb then moving nothing until it
+   * is lifted and put down again.
+   */
+  const drag = useRef({ active: false, pointerId: -1, lastY: 0, moved: 0 })
   /**
    * The chrome sits inside the viewport, so every press on a button also reaches these handlers —
    * and they would read it as a tap on the script. That tap lands on no `[data-prompter-line]`,
@@ -455,32 +462,35 @@ export function PromptScreen() {
    * Touch only, which is why this survived desktop use: a mouse click is dispatched regardless,
    * a tap is re-hit-tested and lands on nothing.
    *
-   * Guarded on both ends: with a second finger already dragging the script, `drag.active` is
-   * true when the tapping finger lifts, so pointerup would otherwise still run the hide path.
-   * `Element`, not `HTMLElement` — a tap on a button lands on the `<svg>` inside it.
-   *
-   * On the way up the guard sits *after* the release, deliberately. A drag that began on the
-   * script and lifted over the chrome is still a drag the script owes an end to: bailing before
-   * `setScrubbing(false)` would strand it scrubbing, and a scrubbing engine has a target velocity
-   * of zero — the prompter would then refuse to scroll at all.
+   * Only what is actually *on* a button counts. The chrome roots are `pointer-events-none` with
+   * live buttons precisely so this stays true: matching the containers instead would make the
+   * top bar's full-width 48px band — and the gaps between the controls — dead to dragging and to
+   * tap-to-jump. `Element`, not `HTMLElement` — a tap on a button lands on the `<svg>` inside it.
    */
   const onChrome = (e: React.PointerEvent) =>
     !!(e.target as Element).closest?.('[data-prompt-chrome]')
   const onPointerDown = (e: React.PointerEvent) => {
     if (onChrome(e)) return
-    drag.current = { active: true, lastY: e.clientY, moved: 0 }
+    drag.current = { active: true, pointerId: e.pointerId, lastY: e.clientY, moved: 0 }
     engine.setScrubbing(true)
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
   }
+  const isDragPointer = (e: React.PointerEvent) =>
+    drag.current.active && e.pointerId === drag.current.pointerId
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current.active) return
+    if (!isDragPointer(e)) return
     const dy = e.clientY - drag.current.lastY
     drag.current.lastY = e.clientY
     drag.current.moved += Math.abs(dy)
     engine.scrubBy(-dy)
   }
   const onPointerUp = (e: React.PointerEvent) => {
-    if (!drag.current.active) return
+    // Nothing to do for a pointer that never started a drag here — a press on a button, or the
+    // second finger of a two-finger hold. Matching the id is what keeps that lift from tearing
+    // down a drag another finger is still making, so no separate chrome guard is needed on the
+    // way up: a drag that began on the script and ends over the chrome is still this pointer's,
+    // and still owes the engine the `setScrubbing(false)` below.
+    if (!isDragPointer(e)) return
     const wasTap = drag.current.moved < 6
     drag.current.active = false
     // Adopts the dragged-to position as the follow target, so nothing lurches while we
@@ -501,7 +511,6 @@ export function PromptScreen() {
       }
       return
     }
-    if (onChrome(e)) return // the press belonged to a button; it is not a tap on the script
     if (!controlsVisible) {
       setControlsVisible(true)
       scheduleHide(engine.playing)

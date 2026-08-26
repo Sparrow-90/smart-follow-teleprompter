@@ -90,9 +90,12 @@ export function PromptControls({
   return (
     <div
       data-prompt-chrome
+      // Only the buttons are live; the gaps between them and the speed readout below stay
+      // transparent to the press, so the script underneath can still be dragged there. Same
+      // reasoning as PromptChrome, where the dead area would be the full width of the screen.
       className={cn(
-        'absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300',
-        visible ? 'opacity-100' : 'pointer-events-none opacity-0',
+        'pointer-events-none absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300',
+        visible ? 'opacity-100 [&_button]:pointer-events-auto' : 'opacity-0',
       )}
     >
       <div className="flex items-center gap-4">

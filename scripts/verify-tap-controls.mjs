@@ -124,7 +124,35 @@ if (empty) {
   check('chrome woken again by the next tap', await chromeVisible())
 }
 
-console.log('5. One tap on Exit — a swallowed press here traps the presenter in Prompt Mode')
+console.log('5. The chrome is only its buttons — the space around them still belongs to the script')
+// The top bar spans the full width of the screen and the controls cluster has gaps between its
+// buttons; if the guard matched those containers rather than the buttons, a press anywhere in
+// them would be dead to dragging and to tap-to-jump. Advance the script first — scrubbing back
+// from position 0 moves nothing, and would report a dead zone that is not there.
+await tap(page.getByRole('button', { name: 'Play' }))
+await sleep(2200)
+await tap(page.getByRole('button', { name: 'Pause' }))
+await sleep(1600)
+// Pausing leaves the controls up of its own accord — tapping to "wake" them here would dismiss
+// them instead, which is what the first version of this check did.
+check('chrome is up for the drag test', await chromeVisible())
+
+const bandDrag = await (async () => {
+  const start = await offset()
+  const bar = await page.evaluate(() => {
+    const r = document.querySelector('[data-prompt-chrome]').getBoundingClientRect()
+    return { midY: Math.round(r.top + r.height / 2), w: Math.round(r.width) }
+  })
+  await page.mouse.move(bar.w / 2, bar.midY)
+  await page.mouse.down()
+  for (let y = bar.midY; y <= 400; y += 25) await page.mouse.move(bar.w / 2, y)
+  await page.mouse.up()
+  await sleep(300)
+  return Math.abs((await offset()) - start)
+})()
+check('a drag begun in the top bar still scrubs the script', bandDrag > 50, `${bandDrag.toFixed(1)}px`)
+
+console.log('6. One tap on Exit — a swallowed press here traps the presenter in Prompt Mode')
 await tap(page.getByRole('button', { name: 'Exit' }))
 await sleep(400)
 check(
