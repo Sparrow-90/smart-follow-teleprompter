@@ -89,6 +89,13 @@ export function PromptControls({
 }: PromptControlsProps) {
   return (
     <div
+      data-prompt-chrome
+      // Solid, unlike PromptChrome — the opposite call, for the opposite geometry. This cluster
+      // shrink-wraps its buttons, so keeping the root live costs only a few hundred px of dead
+      // area at the bottom of the screen, and it buys the near-miss: a thumb that misses Play by
+      // the 16px gap is swallowed here. Transparent, that press falls through to the script and
+      // is read as a tap on it — recentring whatever line is underneath, or, where no line is,
+      // dismissing the chrome, which is this whole bug over again.
       className={cn(
         'absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',

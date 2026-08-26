@@ -442,21 +442,92 @@ export function PromptScreen() {
 
   // Pointer: drag to scrub (manual override always wins). A tap wakes the controls; a tap on
   // a line *while controls are visible* recenters that line — so a tap mid-read never yanks the text.
-  const drag = useRef({ active: false, lastY: 0, moved: 0 })
+  /**
+   * `pointerId` so a drag belongs to the finger that started it. Two fingers are ordinary on a
+   * tablet — one holding the script, one reaching for a button — and without it the second
+   * finger's lift ends the first finger's drag: scrubbing released, Smart Follow re-anchored to
+   * wherever the drag happened to be, and the still-pressed thumb then moving nothing until it
+   * is lifted and put down again.
+   */
+  const drag = useRef({ active: false, pointerId: -1, lastY: 0, moved: 0 })
+  /**
+   * The chrome sits inside the viewport, so every press on a button also reaches these handlers —
+   * and they would read it as a tap on the script. That tap lands on no `[data-prompter-line]`,
+   * which is the "tapped empty space" case, so pressing Play hid the whole interface; and hiding
+   * it applies `pointer-events-none` to the button before the browser dispatches `click`, which
+   * swallows the press outright. Play appeared dead unless the finger drifted the 6px that makes
+   * this a drag instead. The viewport's drag and tap handling belongs to the script; a press on
+   * the chrome is the chrome's alone.
+   *
+   * Touch only, which is why this survived desktop use: a mouse click is dispatched regardless,
+   * a tap is re-hit-tested and lands on nothing.
+   *
+   * Only what is actually *on* a button counts. The chrome roots are `pointer-events-none` with
+   * live buttons precisely so this stays true: matching the containers instead would make the
+   * top bar's full-width 48px band — and the gaps between the controls — dead to dragging and to
+   * tap-to-jump. `Element`, not `HTMLElement` — a tap on a button lands on the `<svg>` inside it.
+   */
+  const onChrome = (e: React.PointerEvent) =>
+    !!(e.target as Element).closest?.('[data-prompt-chrome]')
   const onPointerDown = (e: React.PointerEvent) => {
-    drag.current = { active: true, lastY: e.clientY, moved: 0 }
+    // Secondary fingers never start a drag: landing a second one on the script used to overwrite
+    // `drag.current` wholesale, so its lift ran the tap path — recentring a line or dismissing
+    // the chrome — while the first finger was still down, and the first finger then moved
+    // nothing until it was lifted and put down again. Keyed on `isPrimary` rather than on a live
+    // drag: a stale `active` flag would then lock dragging out permanently, where a fresh single
+    // touch is always primary again.
+    if (!e.isPrimary) return
+    if (onChrome(e)) {
+      // Keep the chrome up for the press. The auto-hide is armed for 3.5s while playing, and if
+      // it expired between this pointerdown and the click it would strip the button's
+      // `pointer-events` and swallow the press — the very failure this guard exists to stop,
+      // arriving from the timer instead of from the tap. A slide-off fires no handler, so
+      // re-arm here rather than merely cancelling.
+      revealControls()
+      return
+    }
+    drag.current = { active: true, pointerId: e.pointerId, lastY: e.clientY, moved: 0 }
     engine.setScrubbing(true)
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
   }
+  const isDragPointer = (e: React.PointerEvent) =>
+    drag.current.active && e.pointerId === drag.current.pointerId
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current.active) return
+    if (!isDragPointer(e)) return
     const dy = e.clientY - drag.current.lastY
     drag.current.lastY = e.clientY
     drag.current.moved += Math.abs(dy)
     engine.scrubBy(-dy)
   }
+  /**
+   * iOS cancels a pointer out from under you — a swipe from the screen edge, a notification, a
+   * stray fourth touch — and no pointerup follows. Without this the drag stays latched and so
+   * does `setScrubbing(true)`, which pins the engine's target velocity at zero: the script
+   * freezes and no button can revive it, because a press on the chrome no longer runs any of
+   * this. The release has to have its own handler.
+   */
+  const onPointerCancel = (e: React.PointerEvent) => {
+    if (!isDragPointer(e)) return
+    const wasDrag = drag.current.moved >= 6
+    drag.current.active = false
+    engine.setScrubbing(false)
+    // A cancelled drag is still a drag the presenter made, and it owes Smart Follow the same
+    // re-anchor a clean lift gives it. Without this the matcher keeps the pre-drag word, so the
+    // next thing the presenter says pulls the script back to where they dragged away from —
+    // the manual override undone by the recovery from an interruption. Gated on it having been
+    // a real drag: a cancelled *tap* moved nothing and must not re-anchor anything.
+    if (wasDrag && usingSFRef.current) {
+      const index = wordIndexAtAnchor(viewportRef.current, undefined, lineHeightPx)
+      if (index != null) sfRef.current.reanchorTo(index)
+    }
+  }
   const onPointerUp = (e: React.PointerEvent) => {
-    if (!drag.current.active) return
+    // Nothing to do for a pointer that never started a drag here — a press on a button, or the
+    // second finger of a two-finger hold. Matching the id is what keeps that lift from tearing
+    // down a drag another finger is still making, so no separate chrome guard is needed on the
+    // way up: a drag that began on the script and ends over the chrome is still this pointer's,
+    // and still owes the engine the `setScrubbing(false)` below.
+    if (!isDragPointer(e)) return
     const wasTap = drag.current.moved < 6
     drag.current.active = false
     // Adopts the dragged-to position as the follow target, so nothing lurches while we
@@ -517,6 +588,7 @@ export function PromptScreen() {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
     >
       <PromptText
         doc={scriptDoc}
