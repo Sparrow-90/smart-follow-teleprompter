@@ -470,6 +470,13 @@ export function PromptScreen() {
   const onChrome = (e: React.PointerEvent) =>
     !!(e.target as Element).closest?.('[data-prompt-chrome]')
   const onPointerDown = (e: React.PointerEvent) => {
+    // Secondary fingers never start a drag: landing a second one on the script used to overwrite
+    // `drag.current` wholesale, so its lift ran the tap path — recentring a line or dismissing
+    // the chrome — while the first finger was still down, and the first finger then moved
+    // nothing until it was lifted and put down again. Keyed on `isPrimary` rather than on a live
+    // drag: a stale `active` flag would then lock dragging out permanently, where a fresh single
+    // touch is always primary again.
+    if (!e.isPrimary) return
     if (onChrome(e)) {
       // Keep the chrome up for the press. The auto-hide is armed for 3.5s while playing, and if
       // it expired between this pointerdown and the click it would strip the button's
@@ -501,8 +508,18 @@ export function PromptScreen() {
    */
   const onPointerCancel = (e: React.PointerEvent) => {
     if (!isDragPointer(e)) return
+    const wasDrag = drag.current.moved >= 6
     drag.current.active = false
     engine.setScrubbing(false)
+    // A cancelled drag is still a drag the presenter made, and it owes Smart Follow the same
+    // re-anchor a clean lift gives it. Without this the matcher keeps the pre-drag word, so the
+    // next thing the presenter says pulls the script back to where they dragged away from —
+    // the manual override undone by the recovery from an interruption. Gated on it having been
+    // a real drag: a cancelled *tap* moved nothing and must not re-anchor anything.
+    if (wasDrag && usingSFRef.current) {
+      const index = wordIndexAtAnchor(viewportRef.current, undefined, lineHeightPx)
+      if (index != null) sfRef.current.reanchorTo(index)
+    }
   }
   const onPointerUp = (e: React.PointerEvent) => {
     // Nothing to do for a pointer that never started a drag here — a press on a button, or the
