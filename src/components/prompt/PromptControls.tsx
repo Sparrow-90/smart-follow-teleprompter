@@ -89,6 +89,7 @@ export function PromptControls({
 }: PromptControlsProps) {
   return (
     <div
+      data-prompt-chrome
       className={cn(
         'absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',

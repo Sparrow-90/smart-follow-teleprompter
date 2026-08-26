@@ -443,7 +443,31 @@ export function PromptScreen() {
   // Pointer: drag to scrub (manual override always wins). A tap wakes the controls; a tap on
   // a line *while controls are visible* recenters that line — so a tap mid-read never yanks the text.
   const drag = useRef({ active: false, lastY: 0, moved: 0 })
+  /**
+   * The chrome sits inside the viewport, so every press on a button also reaches these handlers —
+   * and they would read it as a tap on the script. That tap lands on no `[data-prompter-line]`,
+   * which is the "tapped empty space" case, so pressing Play hid the whole interface; and hiding
+   * it applies `pointer-events-none` to the button before the browser dispatches `click`, which
+   * swallows the press outright. Play appeared dead unless the finger drifted the 6px that makes
+   * this a drag instead. The viewport's drag and tap handling belongs to the script; a press on
+   * the chrome is the chrome's alone.
+   *
+   * Touch only, which is why this survived desktop use: a mouse click is dispatched regardless,
+   * a tap is re-hit-tested and lands on nothing.
+   *
+   * Guarded on both ends: with a second finger already dragging the script, `drag.active` is
+   * true when the tapping finger lifts, so pointerup would otherwise still run the hide path.
+   * `Element`, not `HTMLElement` — a tap on a button lands on the `<svg>` inside it.
+   *
+   * On the way up the guard sits *after* the release, deliberately. A drag that began on the
+   * script and lifted over the chrome is still a drag the script owes an end to: bailing before
+   * `setScrubbing(false)` would strand it scrubbing, and a scrubbing engine has a target velocity
+   * of zero — the prompter would then refuse to scroll at all.
+   */
+  const onChrome = (e: React.PointerEvent) =>
+    !!(e.target as Element).closest?.('[data-prompt-chrome]')
   const onPointerDown = (e: React.PointerEvent) => {
+    if (onChrome(e)) return
     drag.current = { active: true, lastY: e.clientY, moved: 0 }
     engine.setScrubbing(true)
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
@@ -477,6 +501,7 @@ export function PromptScreen() {
       }
       return
     }
+    if (onChrome(e)) return // the press belonged to a button; it is not a tap on the script
     if (!controlsVisible) {
       setControlsVisible(true)
       scheduleHide(engine.playing)

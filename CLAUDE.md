@@ -105,6 +105,16 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   because the workbox `globIgnores`/`runtimeCaching` rules match it by filename — rename one, rename
   both. The engine is runtime-cached on first use, not precached; the **models are still not cached
   at all**, so Smart Follow is not yet offline.
+- **A press on the Prompt Mode chrome is the chrome's alone.** The controls and the top bar sit
+  *inside* the viewport, so every press on a button also reaches the viewport's pointer handlers,
+  which read it as a tap on the script. That tap lands on no `[data-prompter-line]`, which is the
+  "tapped empty space" case — so pressing Play hid the whole interface, and hiding it puts
+  `pointer-events-none` on the button *before* the browser dispatches `click`, swallowing the
+  press entirely. Play looked dead unless the finger drifted the 6px that makes it a drag instead.
+  Both chrome roots carry `data-prompt-chrome` and `onPointerDown`/`onPointerUp` early-return on
+  it — guard both ends, or a second finger already dragging leaves `drag.active` true and the
+  pointerup still hides. `verify-tap-controls.mjs` pins it, with **touchscreen taps**: a mouse
+  click does not reproduce the swallowed click.
 - **Framer owns `transform`; so does the scroll engine — never both on one element.** No `motion.*`
   may touch `contentRef`, the `[data-w]` word spans, or `FocusZone` (a static gradient *precisely* to
   avoid per-frame work). Prompt Mode is entered by an early `return` in `App.tsx` placed *before*
@@ -148,6 +158,7 @@ node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fak
 node scripts/verify-paste.mjs   # a PDF paste lands as the paragraphs the PDF actually had
 node scripts/verify-preset-size.mjs # presets fill the screen; lineHeightPx matches what renders
 node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the script (no mic needed)
+node scripts/verify-tap-controls.mjs # a tap on Play plays, and leaves the chrome up (touch input)
 node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot
 ```
 

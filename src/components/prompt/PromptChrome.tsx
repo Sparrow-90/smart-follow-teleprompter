@@ -11,6 +11,7 @@ interface PromptChromeProps {
 export function PromptChrome({ visible, onExit, status }: PromptChromeProps) {
   return (
     <div
+      data-prompt-chrome
       className={cn(
         'absolute top-0 right-0 left-0 z-30 flex items-center justify-between px-5 py-4 transition-opacity duration-300',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
