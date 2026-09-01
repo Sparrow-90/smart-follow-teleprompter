@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "vercel-build": "bash scripts/fetch-models.sh && npm run build && node scripts/verify-models.mjs",
+    "vercel-build": "bash scripts/fetch-models.sh && npm run build && node scripts/verify-models.mjs && node scripts/verify-lexicon.mjs",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

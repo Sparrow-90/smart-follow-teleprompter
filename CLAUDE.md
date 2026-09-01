@@ -118,10 +118,15 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   when `int32(len) + word + int64(key)` appears in the file. Both ends matter — the length prefix
   stops "paragraph" matching inside "subparagraph", and the trailing key stops two-letter words
   like "up" matching by chance in the millions of small integers in the arc data.
-  `verify-lexicon.mjs` runs this. It also disproves a claim this repo used to make: the Polish
-  model *does* hold click/up/down/go and the English one holds start, so what stops the script
-  triggering commands is the **wake word + verb pair at the end of the window**, never lexicon
-  separation. The device check remains, but only for whether a given voice lands the word.
+  `verify-lexicon.mjs` runs this, and `vercel-build` runs it after `verify-models.mjs`, so a
+  command word the model cannot speak now fails the build rather than shipping silently. It pins
+  the WAKE_WORDS table's per-language claims too — that table is what historically broke.
+  Measured, it also disproves a claim this repo used to make: the Polish model *does* hold
+  click/up/down/go and the English one holds start, so what stops the script triggering commands
+  is the **wake word + verb pair at the end of the window**, never lexicon separation. (The
+  narrower claims all held: promptly/prompt are English-only, asystent and the klik- family are
+  Polish, and `prąd` is present only with its ogonek — which is exactly why the folded table entry
+  is `prad`.) The device check remains, but only for whether a given voice lands the word.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -209,7 +214,8 @@ node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the scri
 node scripts/verify-tap-controls.mjs # a tap on Play plays, and leaves the chrome up (touch input)
 node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot
 node scripts/verify-paragraph-marker.mjs # markers render numbered; "klik akapit" steps back a paragraph
-node scripts/verify-lexicon.mjs # every grammar word exists in the model that must recognize it (no server)
+node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
+                                # it (no server; also runs in vercel-build)
 ```
 
 **Debugging what the recognizer actually heard:** open the app with `?debug=stt` and enter

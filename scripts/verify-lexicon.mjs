@@ -35,6 +35,8 @@ const GRAMMAR = {
   'en-US': ['click up', 'click down', 'click go', 'click paragraph'],
 }
 
+/** Loaded once per language, reused by the wake-word pass below. */
+const fsts = {}
 let failures = 0
 const check = (ok, label, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? ` — ${detail}` : ''}`)
@@ -86,6 +88,8 @@ for (const [lang, archive] of Object.entries(MODELS)) {
     encoding: 'buffer',
   })
 
+  fsts[lang] = fst
+
   const words = [...new Set(GRAMMAR[lang].flatMap((phrase) => phrase.split(/\s+/)))]
   console.log(`\n${lang}  (${words.length} distinct grammar words)`)
   for (const w of words) {
@@ -104,6 +108,36 @@ for (const [lang, archive] of Object.entries(MODELS)) {
   console.log(
     `INFO  ${lang} also holds ${shared.length ? shared.join(', ') : 'none'} from ${other} ` +
       `(harmless — the wake-word pair is the guard, not lexicon separation)`,
+  )
+}
+
+// --- the wake-word table's language assumptions ----------------------------
+// WAKE_WORDS is one shared list accepted whatever the language is set to, and the comments in
+// voiceCommands.ts make specific claims about which model holds what. Those claims are the ones
+// that historically cost days — four wake words were tried and abandoned before klik/click — so
+// they are pinned here rather than left as prose. Expectations below are measured, not assumed.
+const WAKE_EXPECTATIONS = [
+  // [word,        in pl-PL, in en-US, why it is in the table]
+  ['klik', true, false, 'Polish wake form, the robust choice'],
+  ['klika', true, false, 'inflection a spoken "klik" may land on'],
+  ['kliknij', true, false, 'inflection a spoken "klik" may land on'],
+  ['click', true, true, 'the one wake word BOTH models hold outright'],
+  ['promptly', false, true, 'English brand phrase — inert in Polish, as documented'],
+  ['prompt', false, true, 'English brand phrase — inert in Polish, as documented'],
+  ['asystent', true, false, 'the guaranteed Polish fallback'],
+  // normalizeWord folds the ogonek, so the TABLE entry is "prad" while the model emits "prąd".
+  // Checking the folded form would fail and wrongly look like a broken wake word.
+  ['prąd', true, false, 'what the Polish model returns for a spoken "prompt"'],
+]
+
+console.log('\nwake words')
+for (const [word, inPl, inEn, why] of WAKE_EXPECTATIONS) {
+  const gotPl = inLexicon(fsts['pl-PL'], word)
+  const gotEn = inLexicon(fsts['en-US'], word)
+  check(
+    gotPl === inPl && gotEn === inEn,
+    `"${word}" — ${why}`,
+    `pl=${gotPl} en=${gotEn}, expected pl=${inPl} en=${inEn}`,
   )
 }
 

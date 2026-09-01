@@ -95,12 +95,17 @@ const LIST_CLIPBOARD = [
 ].join('\n')
 
 await page.getByRole('button', { name: 'New' }).click()
-await page.waitForTimeout(300)
-// "New" is destructive, so it asks first.
-const confirm = page.getByRole('button', { name: /^(Discard|New|Yes|Confirm|OK)$/ })
-if (await confirm.count()) {
-  await confirm.first().click()
-  await page.waitForTimeout(300)
+await page.waitForTimeout(400)
+// "New" clears straight away (an Undo toast is the safety net, not a dialog). Assert it actually
+// emptied rather than trusting it: if the PDF text were still here, the list would be pasted into
+// it and the counts below would be measuring the wrong thing entirely.
+const clearedTo = await page.evaluate(
+  () => document.querySelector('[role="textbox"][aria-label="Script"]').textContent.trim(),
+)
+if (clearedTo !== '') {
+  await browser.close()
+  console.log(`\n✗ "New" did not clear the editor — still holds "${clearedTo.slice(0, 40)}…"`)
+  process.exit(1)
 }
 await editor.click()
 await page.evaluate((text) => {
@@ -116,13 +121,32 @@ const listState = await page.evaluate(() => {
   return {
     markers: el.querySelectorAll('[data-block="section"]').length,
     lines: [...el.childNodes].map((c) => (c.textContent ?? '').trim()).filter((t) => t !== ''),
+    // syncEmptyState ran, i.e. the editor noticed the paste at all.
+    empty: el.dataset.empty,
   }
 })
 console.log(`\nlist paste  : ${listState.lines.length} lines, ${listState.markers} markers`)
 
-await browser.close()
 if (listState.markers !== 0 || listState.lines.length !== 4) {
+  await browser.close()
   console.log('\n✗ a list paste must come back as four untouched lines with NO markers')
   process.exit(1)
 }
 console.log('✓ a list paste is left alone entirely — no markers run through it')
+
+// The two paste branches reach the document model by different routes: the marker path calls
+// flush() itself, the untouched path relies on execCommand('insertText') firing onInput. Only the
+// second is easy to break silently, so prove the text got all the way into the store — Setup
+// renders from it, and Continue is the gate that reads it.
+await page.getByRole('button', { name: 'Continue' }).click()
+await page.waitForTimeout(500)
+const reachedSetup = await page.getByRole('button', { name: 'Start Prompt' }).count()
+await browser.close()
+if (listState.empty !== 'false' || reachedSetup === 0) {
+  console.log(
+    `\n✗ the untouched paste never reached the document model ` +
+      `(data-empty=${listState.empty}, reached Setup=${reachedSetup > 0})`,
+  )
+  process.exit(1)
+}
+console.log('✓ and it reached the document model — Setup opened from it')
