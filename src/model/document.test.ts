@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   type ScriptDoc,
   PAUSE_GLYPH,
+  SECTION_GLYPH,
   emptyDoc,
   isEmptyDoc,
   wordCount,
@@ -37,6 +38,11 @@ describe('emptyDoc / isEmptyDoc', () => {
 
   it('a doc with only a pause is not empty', () => {
     const doc: ScriptDoc = { blocks: [{ type: 'pause' }] }
+    expect(isEmptyDoc(doc)).toBe(false)
+  })
+
+  it('a doc with only a paragraph marker is not empty', () => {
+    const doc: ScriptDoc = { blocks: [{ type: 'section' }] }
     expect(isEmptyDoc(doc)).toBe(false)
   })
 })
@@ -170,6 +176,53 @@ describe('serializeElement (DOM → model, sanitizing)', () => {
       { type: 'text', runs: [{ text: 'c d' }] },
     ])
     expect(wordCount(doc)).toBe(4)
+  })
+
+  it('reads a paragraph marker as a section block', () => {
+    const doc = serializeElement(
+      root(
+        '<div>before</div>' +
+          '<div data-block="section"><span data-section="true">' + SECTION_GLYPH + '</span></div>' +
+          '<div>after</div>',
+      ),
+    )
+    expect(doc.blocks).toEqual([
+      { type: 'text', runs: [{ text: 'before' }] },
+      { type: 'section' },
+      { type: 'text', runs: [{ text: 'after' }] },
+    ])
+  })
+
+  it('keeps text after a paragraph marker when execCommand nests it in a wrapper div', () => {
+    // The same DOM shape the pause test pins, for the same reason: inserting a marker
+    // mid-script leaves it and the following line wrapped in an extra <div>.
+    const doc = serializeElement(
+      root(
+        '<div>a b</div>' +
+          '<div><div data-block="section"><span data-section="true">' +
+          SECTION_GLYPH +
+          '</span></div><div>c d</div></div>',
+      ),
+    )
+    expect(doc.blocks).toEqual([
+      { type: 'text', runs: [{ text: 'a b' }] },
+      { type: 'section' },
+      { type: 'text', runs: [{ text: 'c d' }] },
+    ])
+    // The marker itself is not script \u2014 it must never reach the word count.
+    expect(wordCount(doc)).toBe(4)
+  })
+
+  it('round-trips a marker through model \u2192 HTML \u2192 model', () => {
+    const doc: ScriptDoc = {
+      blocks: [
+        { type: 'text', runs: [{ text: 'one' }] },
+        { type: 'section' },
+        { type: 'pause' },
+        { type: 'text', runs: [{ text: 'two' }] },
+      ],
+    }
+    expect(serializeElement(root(docToHtml(doc)))).toEqual(doc)
   })
 
   it('handles an empty editor as an empty doc', () => {

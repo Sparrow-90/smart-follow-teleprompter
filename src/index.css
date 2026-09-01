@@ -111,6 +111,49 @@ body {
   text-align: center;
 }
 
+/*
+ * Paragraph markers in the EDITOR.
+ *
+ * The number comes from a CSS counter rather than from the document model, and that is the whole
+ * point: inserting or deleting a marker inside a contentEditable renumbers every marker after it
+ * instantly, with no re-render and nothing to serialize. Prompt Mode counts the same thing in JS
+ * (`section.n` in PromptText) — the two must agree, so both start from 1 and both mean "the
+ * section this marker OPENS", the top of the script being section 1.
+ */
+.script-editor {
+  counter-reset: section 1;
+}
+.script-editor [data-block='section'] {
+  counter-increment: section;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  user-select: none;
+}
+.script-editor [data-block='section']::before,
+.script-editor [data-block='section']::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+/*
+ * The chip stores a pilcrow so the block is meaningful without CSS (and so docToPlainText has
+ * something to emit). In the editor the NUMBER replaces it: `font-size: 0` collapses the stored
+ * glyph and the ::before draws the number at an absolute size, since an em here would resolve
+ * against the zero. Prompt Mode renders its own number in JS and never sees this rule.
+ */
+.script-editor [data-section] {
+  font-size: 0;
+}
+.script-editor [data-section]::before {
+  content: counter(section);
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg-muted);
+}
+
 .script-editor strong {
   font-weight: 700;
 }

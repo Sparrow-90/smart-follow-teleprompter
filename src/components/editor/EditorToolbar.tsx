@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { PAUSE_GLYPH } from '../../model/document'
+import { PAUSE_GLYPH, SECTION_GLYPH } from '../../model/document'
 import { press, pressScale, travel } from '../../motion/tokens'
 import { cn } from '../ui/cn'
 
@@ -9,6 +9,7 @@ interface EditorToolbarProps {
   onNew: () => void
   onBold: () => void
   onPause: () => void
+  onSection: () => void
 }
 
 /** Shared button shape. `min-h-11` is the ~44pt touch minimum — the primary device is a tablet. */
@@ -26,11 +27,11 @@ const tap = { scale: pressScale.small }
  * Header controls for the Script Editor.
  *
  * `New` is the app's only destructive action, so a divider keeps it out of the authoring
- * group. The two tools show what they produce rather than naming it: a bold `B`, and the
+ * group. The tools show what they produce rather than naming it: a bold `B`, and the
  * literal pause glyph the presenter will read in Prompt Mode. (Naming the second one "Pause"
- * made it read as a transport control.)
+ * made it read as a transport control.) The paragraph marker is the one exception — see below.
  */
-export function EditorToolbar({ boldActive, onNew, onBold, onPause }: EditorToolbarProps) {
+export function EditorToolbar({ boldActive, onNew, onBold, onPause, onSection }: EditorToolbarProps) {
   return (
     <div className="flex items-center gap-2">
       <motion.button
@@ -84,6 +85,22 @@ export function EditorToolbar({ boldActive, onNew, onBold, onPause }: EditorTool
           title="Insert pause marker"
         >
           {PAUSE_GLYPH}
+        </motion.button>
+
+        {/*
+          The pause button shows the literal glyph it produces. This one cannot: what it produces
+          is a numbered rule across the column, which is illegible at button size. The pilcrow is
+          the standard mark for a paragraph and reads instantly instead.
+        */}
+        <motion.button
+          className={cn(button, quiet, 'text-base')}
+          whileTap={tap}
+          transition={press}
+          onClick={onSection}
+          aria-label="Insert paragraph marker"
+          title="Insert paragraph marker"
+        >
+          {SECTION_GLYPH}
         </motion.button>
       </div>
     </div>

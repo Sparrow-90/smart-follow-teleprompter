@@ -66,3 +66,24 @@ describe('tokenizeScript', () => {
     expect(tokens.every((t) => t.lineIndex === 1)).toBe(true)
   })
 })
+
+describe('tokenizeScript — paragraph markers', () => {
+  it('a section block contributes no words and is not a line', () => {
+    // No code change made this true — `block.type !== 'text'` already covers it. This pins it,
+    // because Smart Follow's word indices and `lineIndex` both depend on it staying true.
+    const withMarker = tokenizeScript({
+      blocks: [
+        { type: 'text', runs: [{ text: 'a b' }] },
+        { type: 'section' },
+        { type: 'text', runs: [{ text: 'c d' }] },
+      ],
+    })
+    const without = tokenizeScript({
+      blocks: [
+        { type: 'text', runs: [{ text: 'a b' }] },
+        { type: 'text', runs: [{ text: 'c d' }] },
+      ],
+    })
+    expect(withMarker).toEqual(without)
+  })
+})

@@ -9,7 +9,8 @@ import { PromptControls } from '../components/prompt/PromptControls'
 import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
 import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
-import { wordIndexAtAnchor, firstWordIndexIn } from '../smartfollow/positionMap'
+import { wordIndexAtAnchor, firstWordIndexIn, wordProgressTarget } from '../smartfollow/positionMap'
+import { paragraphJumpTargets, previousParagraphIndex } from '../smartfollow/paragraphJumps'
 
 const MIN_SPEED = 0.4
 const MAX_SPEED = 3.0
@@ -62,6 +63,9 @@ export function PromptScreen() {
     [settings.preset, viewport.width, viewport.height],
   )
   const lineHeightPx = preset.fontSize * preset.lineHeight
+  // Where "Klik akapit" can put the presenter. Derived from the document, so it costs nothing
+  // until the script changes.
+  const paragraphTargets = useMemo(() => paragraphJumpTargets(scriptDoc), [scriptDoc])
 
   const [playing, setPlaying] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -296,11 +300,13 @@ export function PromptScreen() {
       lineHeight: () => lineHeightPx,
       following: () => sfRef.current.following,
       pause: () => sfRef.current.pauseFollowing(),
+      command: (c: VoiceCommand) => commandHandlerRef.current(c),
+      paragraphTargets: () => paragraphTargets,
     }
     return () => {
       delete (window as unknown as Record<string, unknown>).__prompter
     }
-  }, [engine, lineHeightPx])
+  }, [engine, lineHeightPx, paragraphTargets])
 
   // Glide the tapped line into the Focus Zone (~40% of the viewport height).
   const jumpToLineAt = (x: number, y: number): boolean => {
@@ -367,6 +373,43 @@ export function PromptScreen() {
   useEffect(() => () => cancelAnimationFrame(settleRafRef.current), [])
 
   /**
+   * Glide so that a KNOWN word index sits at the Focus Zone, and tell Smart Follow it is there.
+   *
+   * Unlike nudgeLines this needs no rAF settle loop: the destination index is known up front, so
+   * the re-anchor is exact and immediate instead of read back off the DOM once the glide lands.
+   * The same geometry as the per-word follow target, so a jump puts the line exactly where
+   * ordinary following would have put it.
+   *
+   * Returns false when the target has no rendered word — Smart Follow off means no `[data-w]`
+   * spans exist at all — so the caller can say nothing happened rather than silently no-op.
+   */
+  const jumpToWordIndex = (index: number): boolean => {
+    const vp = viewportRef.current
+    const dest = wordProgressTarget(
+      engine.position,
+      vp?.querySelector(`[data-w="${index}"]`),
+      vp?.querySelector('[data-prompter-column]'),
+      vp,
+      lineHeightPx,
+      settings.mirror,
+    )
+    if (dest == null) return false
+    // A nudge still in flight would re-anchor Smart Follow to wherever ITS glide was heading,
+    // undoing this jump a frame or two after it lands. And this is an absolute move, so it must
+    // not stack onto the relative destination nudgeLines was accumulating.
+    cancelAnimationFrame(settleRafRef.current)
+    nudgeDestRef.current = null
+    const clamped = engine.glideTo(dest)
+    // Follow mode smooth-damps toward targetPosition; without this it pulls straight back to the
+    // pre-jump target, exactly as tap-to-jump and nudgeLines both document.
+    engine.setTargetPosition(clamped)
+    if (usingSFRef.current) sfRef.current.reanchorTo(index)
+    setControlsVisible(true)
+    scheduleHide(engine.playing)
+    return true
+  }
+
+  /**
    * A spoken command. "Up" moves the reading position back up the script — the same call as the
    * onNudgeBack button, so voice and touch land on one code path. The sign is intentional.
    *
@@ -381,20 +424,28 @@ export function PromptScreen() {
     // movement commands, but a spoken resume arrives when the chrome has long since faded — so
     // without this the one confirmation the presenter gets is invisible exactly when it matters.
     setControlsVisible(true)
+    let flash: string
     if (command === 'resume') {
       sfRef.current.resumeFollowing()
       setPlaying(true)
       scheduleHide(true)
+      flash = '● Following'
+    } else if (command === 'paragraphBack') {
+      // Counted from the MATCHER's position, not the screen's: every manual override already
+      // re-anchors it, so it is the one place that knows where the presenter actually is.
+      const to = previousParagraphIndex(paragraphTargets, sfRef.current.getIndex())
+      const moved = to != null && jumpToWordIndex(to)
+      // A command that deliberately does nothing still has to register, or the presenter says it
+      // again and again wondering whether they were heard.
+      flash = moved ? '↑ ¶ paragraph' : '¶ top of script'
     } else {
       nudgeLines(command === 'back' ? -VOICE_NUDGE_LINES : VOICE_NUDGE_LINES)
+      flash =
+        command === 'back'
+          ? `↑ back ${VOICE_NUDGE_LINES} lines`
+          : `↓ forward ${VOICE_NUDGE_LINES} lines`
     }
-    setCommandFlash(
-      command === 'back'
-        ? `↑ back ${VOICE_NUDGE_LINES} lines`
-        : command === 'forward'
-          ? `↓ forward ${VOICE_NUDGE_LINES} lines`
-          : '● Following',
-    )
+    setCommandFlash(flash)
     if (flashTimer.current) clearTimeout(flashTimer.current)
     flashTimer.current = setTimeout(() => setCommandFlash(null), 1400)
   }

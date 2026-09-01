@@ -71,6 +71,7 @@ export function EditorScreen() {
           onNew={handleNew}
           onBold={() => editorRef.current?.toggleBold()}
           onPause={() => editorRef.current?.insertPause()}
+          onSection={() => editorRef.current?.insertSection()}
         />
       </header>
 

@@ -10,18 +10,22 @@
  *     on every partial, so a pair matched anywhere would fire repeatedly as the words drift back
  *     through the rolling window.
  *
- * There are two vocabularies, because the small Vosk models have a CLOSED lexicon and cannot
- * emit a word they do not hold. `promptly`/`up`/`down`/`go` are all in vosk-model-small-en-us-0.15
- * and NONE of them exist in vosk-model-small-pl-0.22 — which is why "Promptly up" is inert in
- * Polish however clearly it is spoken. `asystent`/`góra`/`dół`/`start` are the mirror image:
- * present in the Polish model, absent from the English one.
+ * There are two vocabularies, because the small Vosk models have a CLOSED lexicon and cannot emit
+ * a word they do not hold. `promptly` is in vosk-model-small-en-us-0.15 and not in
+ * vosk-model-small-pl-0.22 — which is why "Promptly up" is inert in Polish however clearly it is
+ * spoken. `asystent`/`góra`/`dół`/`akapit` are the mirror image: present in the Polish model,
+ * absent from the English one.
  *
  * Both sets live in one table and are accepted whatever the language setting, with no per-language
- * fork. That is safe precisely because of the closed lexicons: neither model can produce the
- * other's words, so the two vocabularies cannot collide or steal each other's triggers.
+ * fork. An earlier version of this comment justified that by claiming the two lexicons were
+ * disjoint, so neither model could produce the other's triggers. **That is not true**, and
+ * `verify-lexicon.mjs` measures it: the Polish model does hold click/up/down/go, and the English
+ * one holds start. Nothing is broken by the overlap, but the reason it is safe is the rule below,
+ * not the lexicons — a command needs a WAKE WORD immediately followed by a verb, at the very end
+ * of the recognition window. That is what the script cannot accidentally satisfy.
  */
 
-export type VoiceCommand = 'back' | 'forward' | 'resume'
+export type VoiceCommand = 'back' | 'forward' | 'resume' | 'paragraphBack'
 
 /**
  * Accepted forms of the wake word.
@@ -69,14 +73,22 @@ export const WAKE_WORDS = [
  * The Polish entries are stored folded (gora, dol) because that is what `normalizeWord` hands the
  * detector — it strips the diacritics Vosk actually emits in "góra" and "dół". The table test
  * pins that; an entry left as "góra" would silently never match.
+ *
+ * `paragraph`/`akapit` move BACK a whole paragraph, and are named `paragraphBack` rather than
+ * `paragraph` because every other command here says which way it goes. There is deliberately no
+ * forward twin: the presenter gets forward for free by reading on, whereas restarting a fumbled
+ * paragraph is what currently costs them a run of `klik góra` on camera. Both spellings are
+ * already diacritic-free, so they satisfy the folded-key rule above without transformation.
  */
 export const COMMAND_VERBS: Record<string, VoiceCommand> = {
   up: 'back',
   down: 'forward',
   go: 'resume',
+  paragraph: 'paragraphBack',
   gora: 'back',
   dol: 'forward',
   start: 'resume',
+  akapit: 'paragraphBack',
 }
 
 /**
@@ -130,7 +142,7 @@ export const GRAMMAR_UNKNOWN = '[unk]'
  */
 export function commandGrammarFor(lang: string): string[] {
   const phrases = lang.startsWith('pl')
-    ? ['klik góra', 'klik dół', 'klik start']
-    : ['click up', 'click down', 'click go']
+    ? ['klik góra', 'klik dół', 'klik start', 'klik akapit']
+    : ['click up', 'click down', 'click go', 'click paragraph']
   return [...phrases, GRAMMAR_UNKNOWN]
 }

@@ -2,7 +2,7 @@
  * The grammar-constrained command recognizer works against the real Polish model.
  *
  * Open-vocabulary recognition has to find "klik góra" among ~280k Polish words and every
- * inflection that sounds like it; the grammar recognizer chooses between three phrases and
+ * inflection that sounds like it; the grammar recognizer chooses between four phrases and
  * "not a command". This drives both on the SAME audio so the difference is visible.
  *
  * IMPORTANT — what this does and does not prove. The fixtures are `say -v Zosia`, i.e. Apple's
@@ -25,7 +25,8 @@ import { existsSync } from 'node:fs'
 
 // Mirrors commandGrammarFor('pl-PL'). Kept literal because node cannot import the .ts module;
 // the unit tests own the real definition, and a drift here shows up as an immediate FAIL.
-const grammar = ['klik góra', 'klik dół', 'klik start', '[unk]']
+// Must stay in step with commandGrammarFor('pl') in src/smartfollow/voiceCommands.ts.
+const grammar = ['klik góra', 'klik dół', 'klik start', 'klik akapit', '[unk]']
 
 const BASE = process.env.BASE ?? 'http://localhost:5173'
 let failures = 0

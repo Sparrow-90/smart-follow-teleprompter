@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EditorToolbar } from './EditorToolbar'
-import { PAUSE_GLYPH } from '../../model/document'
+import { PAUSE_GLYPH, SECTION_GLYPH } from '../../model/document'
 
 const noop = () => {}
 
@@ -12,6 +12,7 @@ function setup(overrides: Partial<Parameters<typeof EditorToolbar>[0]> = {}) {
     onNew: noop,
     onBold: noop,
     onPause: noop,
+    onSection: noop,
     ...overrides,
   }
   render(<EditorToolbar {...props} />)
@@ -19,9 +20,9 @@ function setup(overrides: Partial<Parameters<typeof EditorToolbar>[0]> = {}) {
 }
 
 describe('EditorToolbar', () => {
-  it('renders exactly three controls', () => {
+  it('renders exactly four controls', () => {
     setup()
-    expect(screen.getAllByRole('button')).toHaveLength(3)
+    expect(screen.getAllByRole('button')).toHaveLength(4)
   })
 
   it('no longer shows a word count', () => {
@@ -35,9 +36,24 @@ describe('EditorToolbar', () => {
     expect(pause).toHaveTextContent(PAUSE_GLYPH)
   })
 
+  it('labels the paragraph marker button and shows the pilcrow', () => {
+    setup()
+    const section = screen.getByRole('button', { name: 'Insert paragraph marker' })
+    expect(section).toHaveTextContent(SECTION_GLYPH)
+  })
+
+  it('keeps the paragraph marker distinct from the pause button', () => {
+    // Two adjacent glyph-only buttons in one group: if they ever collapse to the same label or
+    // the same glyph, the presenter has no way to tell which one they are pressing.
+    setup()
+    const pause = screen.getByRole('button', { name: 'Insert pause' })
+    const section = screen.getByRole('button', { name: 'Insert paragraph marker' })
+    expect(pause.textContent).not.toBe(section.textContent)
+  })
+
   it('reflects boldActive on the Bold button', () => {
     const { unmount } = render(
-      <EditorToolbar boldActive={false} onNew={noop} onBold={noop} onPause={noop} />,
+      <EditorToolbar boldActive={false} onNew={noop} onBold={noop} onPause={noop} onSection={noop} />,
     )
     expect(screen.getByRole('button', { name: 'Bold selection' })).toHaveAttribute(
       'aria-pressed',
@@ -45,7 +61,7 @@ describe('EditorToolbar', () => {
     )
     unmount()
 
-    render(<EditorToolbar boldActive onNew={noop} onBold={noop} onPause={noop} />)
+    render(<EditorToolbar boldActive onNew={noop} onBold={noop} onPause={noop} onSection={noop} />)
     expect(screen.getByRole('button', { name: 'Bold selection' })).toHaveAttribute(
       'aria-pressed',
       'true',

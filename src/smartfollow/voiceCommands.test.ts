@@ -78,6 +78,26 @@ describe('voiceCommands — detection', () => {
   })
 })
 
+describe('voiceCommands — paragraph back', () => {
+  it('hears "klik akapit" / "click paragraph"', () => {
+    expect(detectCommand(tokenizePhrase('klik akapit'))).toBe('paragraphBack')
+    expect(detectCommand(tokenizePhrase('click paragraph'))).toBe('paragraphBack')
+  })
+
+  it('needs the wake word, like every other command', () => {
+    // "akapit" is an ordinary Polish word — a script about writing would fire this constantly
+    // if the verb acted alone.
+    expect(detectCommand(tokenizePhrase('nowy akapit'))).toBeNull()
+    expect(detectCommand(tokenizePhrase('akapit'))).toBeNull()
+  })
+
+  it('only fires at the END of the window, like every other command', () => {
+    // Vosk resends the whole utterance on each partial, so a pair matched anywhere would fire
+    // repeatedly as it drifts back through the rolling window.
+    expect(detectCommand(tokenizePhrase('klik akapit i tak dalej'))).toBeNull()
+  })
+})
+
 describe('voiceCommands — resisting the script', () => {
   // Every one of these is ordinary script text. A teleprompter that jumps a line because the
   // presenter read the word "up" out loud is worse than one with no voice control at all.
@@ -117,18 +137,20 @@ describe('voiceCommands — the grammar', () => {
     expect(pl).toContain('klik góra')
     expect(pl).toContain('klik dół')
     expect(pl).toContain('klik start')
+    expect(pl).toContain('klik akapit')
 
     const en = commandGrammarFor('en-US')
     expect(en).toContain('click up')
     expect(en).toContain('click down')
     expect(en).toContain('click go')
+    expect(en).toContain('click paragraph')
   })
 
   it('never mixes the two languages into one grammar', () => {
     // Every grammar word must be in the loaded model's lexicon. Polish words handed to the
     // English model are not, so a mixed grammar would be partly undecodable.
-    expect(commandGrammarFor('pl-PL').join(' ')).not.toMatch(/\b(click|up|down|go)\b/)
-    expect(commandGrammarFor('en-US').join(' ')).not.toMatch(/\b(klik|góra|dół|start)\b/)
+    expect(commandGrammarFor('pl-PL').join(' ')).not.toMatch(/\b(click|up|down|go|paragraph)\b/)
+    expect(commandGrammarFor('en-US').join(' ')).not.toMatch(/\b(klik|góra|dół|start|akapit)\b/)
   })
 
   it('always includes the unknown token', () => {

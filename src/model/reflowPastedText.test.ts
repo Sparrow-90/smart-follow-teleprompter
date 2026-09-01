@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reflowPastedText } from './reflowPastedText'
+import { reflowPastedText, reflowPastedSegments } from './reflowPastedText'
 
 /**
  * Text copied out of a PDF carries a newline at every *visual* line ending — where the page ran
@@ -95,5 +95,63 @@ describe('reflowPastedText — the smaller repairs', () => {
     // screen, both fatal to Smart Follow, which would look for a word that is not there.
     const smuggled = 'Muzeum­Narodowe w Poznaniu'
     expect(reflowPastedText(smuggled)).toBe('MuzeumNarodowe w Poznaniu')
+  })
+})
+
+describe('reflowPastedSegments — what earns a paragraph marker', () => {
+  it('reports reflowed: false for text it deliberately leaves alone', () => {
+    // The paste path keys the whole marker feature off this flag, so it has to mean exactly
+    // "I changed nothing" — typed text and clean prose must come back untouched.
+    expect(reflowPastedSegments('Just one line').reflowed).toBe(false)
+    expect(reflowPastedSegments('Short\nlines\nonly').reflowed).toBe(false)
+  })
+
+  it('marks real paragraph breaks as paragraph, not line', () => {
+    const hardWrapped =
+      'This is a paragraph that has been hard wrapped by a PDF so every\n' +
+      'single line runs out to about the same width as its neighbours and\n' +
+      'then stops here.\n' +
+      'A second paragraph begins on this line and likewise carries on for\n' +
+      'long enough that the width heuristic has something to measure.'
+    const { segments, reflowed } = reflowPastedSegments(hardWrapped)
+    expect(reflowed).toBe(true)
+    expect(segments.length).toBe(2)
+    expect(segments[0].breakAfter).toBe('paragraph')
+    expect(segments[segments.length - 1].breakAfter).toBeNull()
+  })
+
+  it('parts list items with a line break, which must NEVER become a marker', () => {
+    // The same fixture the "never swallows a list item" test uses: its lines all run to a
+    // similar width, so it IS detected as hard-wrapped and does go through the segmenter.
+    // Eleven numbered rules through a twelve-item list is the failure this prevents.
+    const list = [
+      'Zanim zaczniemy nagranie, sprawdź proszę następujące rzeczy po kolei:',
+      '- mikrofon jest podłączony i poziom dźwięku został ustawiony poprawnie',
+      '- światło nie zmienia się w trakcie nagrania ani nie miga w tle',
+      '- telefon jest wyciszony i leży poza zasięgiem ręki prowadzącego',
+    ].join('\n')
+    const { segments, reflowed } = reflowPastedSegments(list)
+    expect(reflowed).toBe(true)
+    expect(segments.length).toBe(4)
+    // Every break here is a list break. Not one of them may earn a marker.
+    expect(segments.map((s) => s.breakAfter)).toEqual(['line', 'line', 'line', null])
+  })
+
+  it('rejoins to exactly what reflowPastedText returns', () => {
+    // The wrapper is the only guarantee that splitting this function changed no behaviour.
+    for (const input of [
+      'one line',
+      'a\nb\nc',
+      'A long hard-wrapped opening line that sets the prevailing width here\n' +
+        'and continues onto a second line before stopping.\n' +
+        'Then a fresh paragraph starts and also runs on for a good while.',
+    ]) {
+      const rejoined = reflowPastedSegments(input)
+        .segments.map(
+          (s) => s.text + (s.breakAfter === 'paragraph' ? '\n\n' : s.breakAfter === 'line' ? '\n' : ''),
+        )
+        .join('')
+      expect(rejoined).toBe(reflowPastedText(input))
+    }
   })
 })
