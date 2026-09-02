@@ -34,6 +34,19 @@ const PAUSE_INSERT_HTML =
  * The marker plus an empty line for the caret to land on. The trailing line belongs to INSERTION
  * only — `SECTION_HTML` on its own is what `docToHtml` emits and what the paste path puts between
  * paragraphs, where an extra blank line would show as a phantom gap after every marker.
+ *
+ * **The trailing line is load-bearing; do not tidy it away.** Measured: inserting the bare
+ * `SECTION_HTML` leaves the chip as the last node in the document, and since it is
+ * `contenteditable="false"` the caret has nowhere to go — every subsequent keystroke is swallowed
+ * and the presenter cannot type the paragraph they just marked. With the trailing line, typing
+ * lands in it as expected.
+ *
+ * It does have a cost: pressing Enter on that empty line — the natural "now start the new
+ * paragraph" gesture — makes a SECOND empty line, which survives into the document. That used to
+ * open a 2.23-line-pitch hole in Prompt Mode and push the next line past the Focus Zone's fade.
+ * It no longer can: `promptBlocks.toRenderBlocks` collapses a marker and any blank lines beside it
+ * into one gap of exactly one line pitch. The blank line remains visible here, in the editor,
+ * where it is the presenter's own and costs nothing.
  */
 const SECTION_INSERT_HTML = `${SECTION_HTML}<div><br></div>`
 

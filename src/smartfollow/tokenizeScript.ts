@@ -7,7 +7,15 @@ import type { ScriptDoc } from '../model/document'
 export interface ScriptToken {
   /** Normalized comparison form (lowercase, diacritics folded, punctuation stripped). */
   text: string
-  /** 0-based index among *text lines* only — maps to the Nth [data-prompter-line] in Prompt Mode. */
+  /**
+   * 0-based index among *text blocks* only — pauses and paragraph markers are skipped, blank
+   * lines are not.
+   *
+   * NOT a DOM index. Prompt Mode collapses blank lines into gaps (see promptBlocks.ts), so this
+   * no longer counts the Nth [data-prompter-line]. Nothing in the follow path uses it — the
+   * engine aims at the matched WORD's `[data-w]` span — and it survives for the `#lab` harness
+   * and for reading a match back in debugging. Do not reintroduce a DOM lookup through it.
+   */
   lineIndex: number
   /** 0-based global word index across the whole script. */
   index: number

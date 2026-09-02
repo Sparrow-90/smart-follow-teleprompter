@@ -112,6 +112,33 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   module exists for. The marker **replaces** the blank line a paragraph break used to become; emit
   both and every paragraph gains a phantom gap. `SECTION_HTML` (bare) is the paste separator,
   `SECTION_INSERT_HTML` (with a trailing empty line for the caret) is the toolbar button's alone.
+- **A gap between two lines may cost ONE line pitch, and no more.** The Focus Zone holds the line
+  being read at 40% of the viewport and its gradient has faded the text to near the background by
+  82%, so there are only ~2.4 line pitches of legible runway below the anchor — and that number is
+  the *same on every screen*, because `resolvePreset` scales text by whichever viewport axis is
+  tighter (`0.6 x 834 / 150`). So a gap is not a small-screen problem and nothing about it may be
+  conditioned on viewport size. Measured at Distance: a marker cost 0.93 pitches, a blank line 1.60,
+  and a marker with a blank line beside it **2.23** — putting the next line 3.23 pitches down, past
+  the fade and off the bottom edge, so the presenter finished a line with nothing readable to move
+  to. `promptBlocks.toRenderBlocks` collapses each run of markers, pauses and blank lines into ONE
+  gap, and `PromptText` gives it zero margin and a height of `lineHeight - 2 x 0.45em` so
+  `margin + box + margin` comes to exactly one pitch. That also makes `nudgeLines` exact, since it
+  moves in whole multiples of `lineHeightPx`. It is a VIEW transform on purpose: the document keeps
+  the blank lines, the editor keeps showing them, and PRD Phase 3's pause work reads the same doc.
+  A run holding both a marker and a pause keeps **both** glyphs in the one gap — a pause is a
+  reading instruction, a marker is a bookmark. The pause glyph keeps its authored size and simply
+  **overflows** the box, which is shorter than a line: shrinking it to fit made the dots nearly
+  invisible at Distance. So the invariant `verify-line-gap.mjs` asserts is not "content fits the
+  box" but "content never reaches into the text either side" — the gap's SPACE is what is capped.
+  It pins all of this at all three presets, `Close` (lineHeight 1.4) being the tightest box.
+  Note this made `ScriptToken.lineIndex` stop matching the Nth `[data-prompter-line]` (blank lines
+  no longer render as lines); nothing in the follow path used it, and the comment there now says so.
+- **The editor's marker insert needs its trailing empty line — do not tidy it away.** Measured:
+  inserting the bare `SECTION_HTML` leaves the `contenteditable="false"` chip as the last node in
+  the document, the caret has nowhere to go, and every keystroke after it is swallowed. Its cost is
+  that pressing Enter there — the natural "now start the new paragraph" gesture — leaves a second
+  blank line in the document; that is what opened the 2.23-pitch hole above, and the gap cap is what
+  makes it harmless.
 - **A model's lexicon can be checked offline — the two are NOT disjoint.** The gotcha below says
   `?debug=stt` on a device was the only way to find out whether a command word exists. It isn't:
   `graph/Gr.fst` embeds the word symbol table as OpenFst writes it, so a word is present exactly
@@ -235,6 +262,7 @@ node scripts/verify-tap-controls.mjs # a tap on Play plays, and leaves the chrom
 node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot
 node scripts/verify-paragraph-marker.mjs # markers render numbered; "klik akapit" steps back a paragraph
 node scripts/verify-mic-recovery.mjs # a refused mic says why, and the retry reopens it in place
+node scripts/verify-line-gap.mjs # a gap between two lines never costs more than one line pitch
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
 ```
