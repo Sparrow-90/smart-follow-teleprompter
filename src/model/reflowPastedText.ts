@@ -53,12 +53,36 @@ function looksHardWrapped(lines: string[]): boolean {
   return median >= max * 0.6
 }
 
-export function reflowPastedText(raw: string): string {
+/**
+ * One reflowed chunk, plus the kind of break that FOLLOWS it (null on the last).
+ *
+ * The distinction is the whole reason this is exposed: a `paragraph` break is where the writer
+ * ended a thought, a `line` break merely parts two list items. Only the former earns a paragraph
+ * marker — marking every break would run eleven numbered rules through a twelve-item list.
+ */
+export interface ReflowSegment {
+  text: string
+  breakAfter: 'paragraph' | 'line' | null
+}
+
+/**
+ * The segmentation {@link reflowPastedText} has always computed internally, exposed so the paste
+ * path can drop a marker at each real paragraph break.
+ *
+ * `reflowed` is false on exactly the paths that return the text untouched — no newlines, or it does
+ * not look hard-wrapped. Callers must treat that as "leave this paste alone": typed text, lists and
+ * clean prose coming back unchanged is the invariant this whole module exists to protect.
+ */
+export function reflowPastedSegments(raw: string): { segments: ReflowSegment[]; reflowed: boolean } {
   const text = normalize(raw)
-  if (!text.includes('\n')) return text
+  const asIs: { segments: ReflowSegment[]; reflowed: boolean } = {
+    segments: [{ text, breakAfter: null }],
+    reflowed: false,
+  }
+  if (!text.includes('\n')) return asIs
 
   const lines = text.split('\n').map((l) => l.trim())
-  if (!looksHardWrapped(lines)) return text
+  if (!looksHardWrapped(lines)) return asIs
 
   const max = Math.max(...lines.filter((l) => l !== '').map((l) => l.length))
   // Short enough to have been the end of a paragraph rather than a wrap. Deliberately strict:
@@ -70,16 +94,17 @@ export function reflowPastedText(raw: string): string {
     return c !== c.toLowerCase() || /[0-9„“"'«(\-–—]/u.test(c)
   }
 
-  // Chunks and the separators between them. Paragraphs are parted by a blank line, the way the
+  // Chunks and the breaks between them. Paragraphs are parted by a blank line, the way the
   // source showed them; list items only by a newline, because a double-spaced list is its own
-  // kind of mangling.
-  const chunks: string[] = []
+  // kind of mangling. The break is recorded on the chunk it FOLLOWS, which is why it is written
+  // back onto the previous segment rather than pushed as its own entry.
+  const segments: ReflowSegment[] = []
   let buf = ''
-  let pendingSep = ''
-  const flush = (sep: string) => {
+  let pendingSep: ReflowSegment['breakAfter'] = null
+  const flush = (sep: ReflowSegment['breakAfter']) => {
     if (!buf) return
-    if (chunks.length) chunks.push(pendingSep)
-    chunks.push(buf)
+    if (segments.length) segments[segments.length - 1].breakAfter = pendingSep
+    segments.push({ text: buf, breakAfter: null })
     pendingSep = sep
     buf = ''
   }
@@ -87,10 +112,10 @@ export function reflowPastedText(raw: string): string {
   lines.forEach((line, i) => {
     if (line === '') {
       // A blank line is the one break the source states outright. Always honour it.
-      flush(PARAGRAPH)
+      flush('paragraph')
       return
     }
-    if (buf && BULLET.test(line)) flush(LINE)
+    if (buf && BULLET.test(line)) flush('line')
 
     if (!buf) buf = line
     else if (HYPHEN_BREAK.test(buf) && /^\p{Ll}/u.test(line)) buf = buf.slice(0, -1) + line
@@ -98,10 +123,23 @@ export function reflowPastedText(raw: string): string {
 
     const next = lines[i + 1]
     if (!next) return
-    if (BULLET.test(next)) flush(LINE)
-    else if (SENTENCE_END.test(line) && isShort(line) && startsSomethingNew(next)) flush(PARAGRAPH)
+    if (BULLET.test(next)) flush('line')
+    else if (SENTENCE_END.test(line) && isShort(line) && startsSomethingNew(next)) flush('paragraph')
   })
-  flush('')
+  flush(null)
 
-  return chunks.join('')
+  return { segments, reflowed: true }
+}
+
+/**
+ * Undo a PDF's line breaks, as a plain string. Unchanged in behaviour — it rejoins
+ * {@link reflowPastedSegments} with the very separators that used to live inside the chunk array,
+ * so its output is byte-identical to before the split.
+ */
+export function reflowPastedText(raw: string): string {
+  return reflowPastedSegments(raw)
+    .segments.map(
+      (s) => s.text + (s.breakAfter === 'paragraph' ? PARAGRAPH : s.breakAfter === 'line' ? LINE : ''),
+    )
+    .join('')
 }

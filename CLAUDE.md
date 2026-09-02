@@ -19,6 +19,9 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   manual override, re-anchor recovery). On-device Vosk speech → matcher → gentle word-level follow.
   Confirmed working live (Polish, Safari). `#lab` survives as a dev harness, not the product path.
   PRD Phase 3's remaining gap is **pause behaviour** — `tokenizeScript` still drops PAUSE blocks.
+- **Paragraph markers — shipped** (branch `paragraph-markers`). A `section` block the presenter
+  places (or that a reflowed PDF paste places for them), rendered as a numbered rule, with
+  **"Klik akapit" / "Click paragraph"** jumping BACK a paragraph. Recovery, not navigation.
 
 ## Stack
 
@@ -38,7 +41,7 @@ src/
                 presets (+ resolvePreset, tested), settings
   state/        store (Zustand): view, scriptDoc, settings, hydrate/persist
   persistence/  storage (IndexedDB script + localStorage prefs)
-  smartfollow/  tokenizeScript, matcher, positionMap (all pure + tested);
+  smartfollow/  tokenizeScript, matcher, positionMap, paragraphJumps (all pure + tested);
                 stt/voskEngine, useVosk (mic → recognized words)
 ```
 
@@ -83,6 +86,67 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   `[unk]` is **mandatory**: without it every utterance is force-fit to the nearest phrase and
   reading the script aloud fires commands continuously. Never mix languages in one grammar — every
   word must be in the loaded model's lexicon. `verify-grammar.mjs` pins all of this.
+- **A paragraph marker is a `section` BLOCK, and it is not called `paragraph`.** Every `text` block
+  already renders as a `<p data-prompter-line>`, so naming the marker `paragraph` would make the
+  block union unreadable — the model says `section`, the UI says "paragraph marker". It mirrors
+  `pause` at every serializer site (one `markerTypeOf` helper resolves both), and like `pause` it
+  carries no words and is not a line, so `tokenizeScript` needed no change at all. What the marker
+  buys is NOT paragraph structure — the document model already has that — but the presenter's
+  judgement about **which** breaks are worth jumping to. `paragraphJumps.ts` turns markers into word
+  indices; `previousParagraphIndex` is two-stage (first say → top of this paragraph, say it again →
+  the one before), which works only because `reanchorTo` leaves the matcher exactly on the first
+  target. `verify-paragraph-marker.mjs` pins that second command specifically — a unit test cannot
+  reach it.
+- **The marker's number is never stored.** Prompt Mode counts in JS, the editor uses a CSS counter
+  (`counter-reset: section 1` in `index.css`) — which is what makes inserting or deleting one
+  renumber everything after it live inside a contentEditable. Both start at 1 because the top of the
+  script is section 1, so the first marker reads **2**. Nothing at runtime can catch the two drifting
+  apart (a CSS counter's resolved value is not readable from the DOM), so `verify-paragraph-marker.mjs`
+  pins the start values at the source. The numeral also needs a **counter-flip** under Mirror; the
+  rules either side are symmetric and need nothing.
+- **A paste only gets markers if it was actually reflowed, and only at PARAGRAPH breaks.**
+  `reflowPastedSegments` exposes what `reflowPastedText` always computed internally, and the
+  `paragraph` (`\n\n`) vs `line` (`\n`) distinction is load-bearing: `line` parts list items, and
+  marking those would run eleven numbered rules through a twelve-item list. When `reflowed` is
+  false the original `insertText` path runs verbatim — that bail-out is the invariant the whole
+  module exists for. The marker **replaces** the blank line a paragraph break used to become; emit
+  both and every paragraph gains a phantom gap. `SECTION_HTML` (bare) is the paste separator,
+  `SECTION_INSERT_HTML` (with a trailing empty line for the caret) is the toolbar button's alone.
+- **A model's lexicon can be checked offline — the two are NOT disjoint.** The gotcha below says
+  `?debug=stt` on a device was the only way to find out whether a command word exists. It isn't:
+  `graph/Gr.fst` embeds the word symbol table as OpenFst writes it, so a word is present exactly
+  when `int32(len) + word + int64(key)` appears in the file. Both ends matter — the length prefix
+  stops "paragraph" matching inside "subparagraph", and the trailing key stops two-letter words
+  like "up" matching by chance in the millions of small integers in the arc data.
+  `verify-lexicon.mjs` runs this, and `vercel-build` runs it after `verify-models.mjs`, so a
+  command word the model cannot speak now fails the build rather than shipping silently. It pins
+  the WAKE_WORDS table's per-language claims too — that table is what historically broke.
+  Measured, it also disproves a claim this repo used to make: the Polish model *does* hold
+  click/up/down/go and the English one holds start, so what stops the script triggering commands
+  is the **wake word + verb pair at the end of the window**, never lexicon separation. (The
+  narrower claims all held: promptly/prompt are English-only, asystent and the klik- family are
+  Polish, and `prąd` is present only with its ogonek — which is exactly why the folded table entry
+  is `prad`.) The device check remains, but only for whether a given voice lands the word.
+- **A refused mic is recoverable; a missing one is not — and the UI must tell them apart.**
+  `VoskErrorKind` is `'permission' | 'mic' | 'model'`, split because only the first is something
+  the presenter can act on from inside Prompt Mode. Two defects lived here: `useVosk` composed a
+  precise reason and `PromptScreen` discarded it (every mic problem read as "Manual — mic
+  unavailable"), and `sfFailure` was **write-once**, so the fallback to manual was permanent for
+  the session, making the app's own "allow the mic and try again" impossible to follow.
+  **And the fallback did not work at all**: `useSmartFollow.start()` sets the engine to `'follow'`
+  synchronously *before* the mic can fail, nothing else ever calls `setMode('auto')`, and
+  `tick()`'s follow branch ignores `playingFlag` — so Play flipped a flag no code read and the
+  script sat frozen with live-looking speed controls. Falling back now restores `'auto'`, and the
+  retry pins `setTargetPosition(engine.destination)` first, or follow mode damps back to its stale
+  target and rewinds the presenter to the top — the same trap `pauseFollowing`, `restart` and
+  `nudgeLines` each guard against. The status chip is now
+  a button (`data-sf-status`) that clears the flag and retries. It is live only while showing a
+  failure: the chrome root is `pointer-events-none` and hands live-ness to buttons alone, so an
+  always-on button would take a slice of the full-width bar away from dragging the script.
+  `verify-mic-recovery.mjs` pins it — and note it **stubs** the denial, because headless Chromium
+  with permissions cleared rejects `getUserMedia` with `NotSupportedError`, never the
+  `NotAllowedError` a real browser raises, so the permission path is unreachable through
+  Playwright's permission API.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -169,6 +233,10 @@ node scripts/verify-preset-size.mjs # presets fill the screen; lineHeightPx matc
 node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the script (no mic needed)
 node scripts/verify-tap-controls.mjs # a tap on Play plays, and leaves the chrome up (touch input)
 node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot
+node scripts/verify-paragraph-marker.mjs # markers render numbered; "klik akapit" steps back a paragraph
+node scripts/verify-mic-recovery.mjs # a refused mic says why, and the retry reopens it in place
+node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
+                                # it (no server; also runs in vercel-build)
 ```
 
 **Debugging what the recognizer actually heard:** open the app with `?debug=stt` and enter
@@ -179,7 +247,11 @@ this is the only way to see what comes back instead.
 
 ## Roadmap / next
 
-PRD Phase 3's last item: **PAUSE behaviour** for Smart Follow (see the gotcha above). Then Phase 4
+PRD Phase 3's last item: **PAUSE behaviour** for Smart Follow (see the gotcha above). Note that
+paragraph markers made `tokenizeScript`'s skipping of non-text blocks load-bearing for a second
+reason, though the two features are independent. Paragraph markers are also **undiscoverable** —
+`resumePhraseFor` advertises only the resume phrase, so nothing tells a presenter the command
+exists; that needs a place to list commands, which is its own piece of work. Then Phase 4
 device optimization on a real installed PWA. Still open: caching the 40–50MB models for true offline
 Smart Follow, VAD gate, latency tuning, more languages.
 See `docs`/PRD §63–74 and the memory notes for history.

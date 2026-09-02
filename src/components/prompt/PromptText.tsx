@@ -40,6 +40,11 @@ function renderWords(text: string, counter: { i: number }): ReactNode[] {
  */
 export function PromptText({ doc, preset, mirror, contentRef, wordIndices }: PromptTextProps) {
   const counter = { i: 0 }
+  // Paragraph-marker numbering. Starts at 1 because the top of the script IS section 1, so the
+  // first marker opens section 2. The editor reaches the same numbers through a CSS counter
+  // (`counter-reset: section 1` in index.css) — change one and you must change the other, or the
+  // same document is numbered differently in the two places the presenter sees it.
+  const section = { n: 1 }
   return (
     <div
       ref={contentRef}
@@ -54,6 +59,31 @@ export function PromptText({ doc, preset, mirror, contentRef, wordIndices }: Pro
     >
       <div data-prompter-column className="mx-auto px-6" style={{ maxWidth: `${preset.columnWidth}px` }}>
         {doc.blocks.map((block, i) => {
+          if (block.type === 'section') {
+            // A paragraph marker: a hairline rule with the number of the section it OPENS.
+            // Deliberately not a [data-prompter-line] — it holds no words, so tap-to-jump and
+            // wordIndexAtAnchor must fall through it exactly as they do a pause.
+            const n = ++section.n
+            return (
+              <div key={i} data-block="section" className="my-[0.5em] flex items-center gap-[0.6em]">
+                <span className="h-px flex-1 bg-border" />
+                {/*
+                  Mirror flips the whole content div, which would render the numeral backwards.
+                  Flipping it again cancels that out; the rules either side are symmetric and
+                  need nothing.
+                */}
+                <span
+                  className={cn(
+                    'text-[0.4em] leading-none font-semibold tabular-nums text-fg-muted',
+                    mirror && '-scale-x-100',
+                  )}
+                >
+                  {n}
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            )
+          }
           if (block.type === 'pause') {
             return (
               <div key={i} data-block="pause" className="my-[0.7em]">

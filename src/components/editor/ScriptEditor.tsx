@@ -2,15 +2,18 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import {
   type ScriptDoc,
   PAUSE_GLYPH,
+  SECTION_HTML,
   docToHtml,
+  escapeHtml,
   isEmptyDoc,
   serializeElement,
 } from '../../model/document'
-import { reflowPastedText } from '../../model/reflowPastedText'
+import { reflowPastedSegments, reflowPastedText } from '../../model/reflowPastedText'
 
 export interface ScriptEditorHandle {
   toggleBold: () => void
   insertPause: () => void
+  insertSection: () => void
   focus: () => void
 }
 
@@ -26,6 +29,13 @@ interface ScriptEditorProps {
 
 const PAUSE_INSERT_HTML =
   `<div data-block="pause"><span data-pause="true" contenteditable="false">${PAUSE_GLYPH}</span></div><div><br></div>`
+
+/**
+ * The marker plus an empty line for the caret to land on. The trailing line belongs to INSERTION
+ * only — `SECTION_HTML` on its own is what `docToHtml` emits and what the paste path puts between
+ * paragraphs, where an extra blank line would show as a phantom gap after every marker.
+ */
+const SECTION_INSERT_HTML = `${SECTION_HTML}<div><br></div>`
 
 /**
  * A controlled-on-reset contentEditable. It initializes its DOM from `initialDoc`
@@ -74,7 +84,9 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
     const syncEmptyState = () => {
       const el = editorRef.current
       if (!el) return
-      const empty = el.textContent?.trim() === '' && el.querySelector('[data-pause]') === null
+      const empty =
+        el.textContent?.trim() === '' &&
+        el.querySelector('[data-pause],[data-block="section"]') === null
       el.dataset.empty = empty ? 'true' : 'false'
       onEmptyChange(empty)
     }
@@ -105,6 +117,13 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
         document.execCommand('insertHTML', false, PAUSE_INSERT_HTML)
         flush()
       },
+      insertSection() {
+        const el = editorRef.current
+        if (!el) return
+        el.focus()
+        document.execCommand('insertHTML', false, SECTION_INSERT_HTML)
+        flush()
+      },
       focus() {
         editorRef.current?.focus()
       },
@@ -127,13 +146,35 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
       }, 250)
     }
 
-    // Paste as plain text only — the editor is intentionally not a rich text editor — and undo
-    // the line breaks a PDF copy brings with it, which would otherwise land as one paragraph per
-    // wrapped line. See reflowPastedText for what it does and, more importantly, what it won't.
+    /**
+     * Paste as plain text only — the editor is intentionally not a rich text editor — and undo the
+     * line breaks a PDF copy brings with it, which would otherwise land as one paragraph per
+     * wrapped line. See reflowPastedText for what it does and, more importantly, what it won't.
+     *
+     * A paste it *did* reflow is a document whose real paragraph breaks we now know, so each one
+     * gets a paragraph marker for free. Everything else — typed text, lists, clean prose — takes
+     * the original path untouched, which is the invariant reflowPastedText exists to protect.
+     */
     const handlePaste = (e: React.ClipboardEvent) => {
       e.preventDefault()
       const text = e.clipboardData.getData('text/plain')
-      document.execCommand('insertText', false, reflowPastedText(text))
+      const { segments, reflowed } = reflowPastedSegments(text)
+      if (!reflowed || segments.length < 2) {
+        document.execCommand('insertText', false, reflowPastedText(text))
+        return
+      }
+      // The marker REPLACES the blank line a paragraph break used to become, rather than joining
+      // it — emitting both would give blank line + marker + blank line. A 'line' break (list
+      // items) gets no marker at all; only a real paragraph break earns one.
+      const html = segments
+        .map(
+          (seg) =>
+            `<div>${escapeHtml(seg.text)}</div>` +
+            (seg.breakAfter === 'paragraph' ? SECTION_HTML : ''),
+        )
+        .join('')
+      document.execCommand('insertHTML', false, html)
+      flush()
     }
 
     useEffect(() => {

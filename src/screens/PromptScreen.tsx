@@ -8,8 +8,10 @@ import { FocusZone } from '../components/prompt/FocusZone'
 import { PromptControls } from '../components/prompt/PromptControls'
 import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
+import type { VoskErrorKind } from '../smartfollow/useVosk'
 import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
-import { wordIndexAtAnchor, firstWordIndexIn } from '../smartfollow/positionMap'
+import { wordIndexAtAnchor, firstWordIndexIn, wordProgressTarget } from '../smartfollow/positionMap'
+import { paragraphJumpTargets, previousParagraphIndex } from '../smartfollow/paragraphJumps'
 
 const MIN_SPEED = 0.4
 const MAX_SPEED = 3.0
@@ -62,6 +64,9 @@ export function PromptScreen() {
     [settings.preset, viewport.width, viewport.height],
   )
   const lineHeightPx = preset.fontSize * preset.lineHeight
+  // Where "Klik akapit" can put the presenter. Derived from the document, so it costs nothing
+  // until the script changes.
+  const paragraphTargets = useMemo(() => paragraphJumpTargets(scriptDoc), [scriptDoc])
 
   const [playing, setPlaying] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -115,10 +120,17 @@ export function PromptScreen() {
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Why Smart Follow gave up, kept once it has. The mic and the model fail for unrelated reasons
   // and have unrelated remedies, so the chip must not blame the mic for a failed download.
-  const [sfFailure, setSfFailure] = useState<'mic' | 'model' | null>(null)
+  const [sfFailure, setSfFailure] = useState<VoskErrorKind | null>(null)
   useEffect(() => {
-    if (sf.error) setSfFailure(sf.errorKind ?? 'mic')
-  }, [sf.error, sf.errorKind])
+    if (!sf.error) return
+    setSfFailure(sf.errorKind ?? 'mic')
+    // Hand the engine back to auto mode, or the "fallback to manual" is a fiction: start() sets
+    // 'follow' synchronously BEFORE the microphone can fail, nothing else ever sets 'auto' back,
+    // and tick()'s follow branch ignores playingFlag entirely — it only damps toward
+    // targetPosition. So Play would flip a flag no code reads, leaving the presenter with a frozen
+    // script, visible speed controls that do nothing, and no way to move the text at all.
+    engine.setMode('auto')
+  }, [sf.error, sf.errorKind, engine])
   const usingSmartFollow = settings.smartFollow && !sfFailure
 
   // Refs so long-lived callbacks/effects see the latest without re-subscribing every render.
@@ -196,6 +208,33 @@ export function PromptScreen() {
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
   }, [engine])
+
+  /**
+   * Try Smart Follow again after it gave out.
+   *
+   * `sfFailure` was write-once, so the fallback to manual was permanent for the session: pressing
+   * Play afterwards ran the manual branch and never re-attempted start(), which made "allow the
+   * mic and try again" advice the app itself made impossible to follow. Only leaving Prompt Mode
+   * and coming back cleared it.
+   *
+   * Clearing the flag is what re-arms `usingSmartFollow`; if the microphone is still refused,
+   * start() fails again and the effect above simply puts the chip back, so a retry costs nothing.
+   * The engine is paused first because the fallback really can leave a manual scroll running, and
+   * follow mode should take over a still script rather than a moving one.
+   */
+  const retrySmartFollow = useCallback(() => {
+    engine.pause()
+    // Adopt wherever the manual scroll got to as the follow target. start() switches straight back
+    // to follow mode, which damps toward `targetPosition` — still holding whatever Smart Follow
+    // last aimed at, usually 0. Without this the retry rewinds the presenter to the top of the
+    // script. Same trap pauseFollowing, restart and nudgeLines each guard against.
+    engine.setTargetPosition(engine.destination)
+    setSfFailure(null)
+    sfRef.current.start()
+    setPlaying(true)
+    setControlsVisible(true)
+    scheduleHide(true)
+  }, [engine, scheduleHide])
 
   const doExit = useCallback(() => {
     engine.pause()
@@ -296,11 +335,13 @@ export function PromptScreen() {
       lineHeight: () => lineHeightPx,
       following: () => sfRef.current.following,
       pause: () => sfRef.current.pauseFollowing(),
+      command: (c: VoiceCommand) => commandHandlerRef.current(c),
+      paragraphTargets: () => paragraphTargets,
     }
     return () => {
       delete (window as unknown as Record<string, unknown>).__prompter
     }
-  }, [engine, lineHeightPx])
+  }, [engine, lineHeightPx, paragraphTargets])
 
   // Glide the tapped line into the Focus Zone (~40% of the viewport height).
   const jumpToLineAt = (x: number, y: number): boolean => {
@@ -367,6 +408,43 @@ export function PromptScreen() {
   useEffect(() => () => cancelAnimationFrame(settleRafRef.current), [])
 
   /**
+   * Glide so that a KNOWN word index sits at the Focus Zone, and tell Smart Follow it is there.
+   *
+   * Unlike nudgeLines this needs no rAF settle loop: the destination index is known up front, so
+   * the re-anchor is exact and immediate instead of read back off the DOM once the glide lands.
+   * The same geometry as the per-word follow target, so a jump puts the line exactly where
+   * ordinary following would have put it.
+   *
+   * Returns false when the target has no rendered word — Smart Follow off means no `[data-w]`
+   * spans exist at all — so the caller can say nothing happened rather than silently no-op.
+   */
+  const jumpToWordIndex = (index: number): boolean => {
+    const vp = viewportRef.current
+    const dest = wordProgressTarget(
+      engine.position,
+      vp?.querySelector(`[data-w="${index}"]`),
+      vp?.querySelector('[data-prompter-column]'),
+      vp,
+      lineHeightPx,
+      settings.mirror,
+    )
+    if (dest == null) return false
+    // A nudge still in flight would re-anchor Smart Follow to wherever ITS glide was heading,
+    // undoing this jump a frame or two after it lands. And this is an absolute move, so it must
+    // not stack onto the relative destination nudgeLines was accumulating.
+    cancelAnimationFrame(settleRafRef.current)
+    nudgeDestRef.current = null
+    const clamped = engine.glideTo(dest)
+    // Follow mode smooth-damps toward targetPosition; without this it pulls straight back to the
+    // pre-jump target, exactly as tap-to-jump and nudgeLines both document.
+    engine.setTargetPosition(clamped)
+    if (usingSFRef.current) sfRef.current.reanchorTo(index)
+    setControlsVisible(true)
+    scheduleHide(engine.playing)
+    return true
+  }
+
+  /**
    * A spoken command. "Up" moves the reading position back up the script — the same call as the
    * onNudgeBack button, so voice and touch land on one code path. The sign is intentional.
    *
@@ -381,20 +459,28 @@ export function PromptScreen() {
     // movement commands, but a spoken resume arrives when the chrome has long since faded — so
     // without this the one confirmation the presenter gets is invisible exactly when it matters.
     setControlsVisible(true)
+    let flash: string
     if (command === 'resume') {
       sfRef.current.resumeFollowing()
       setPlaying(true)
       scheduleHide(true)
+      flash = '● Following'
+    } else if (command === 'paragraphBack') {
+      // Counted from the MATCHER's position, not the screen's: every manual override already
+      // re-anchors it, so it is the one place that knows where the presenter actually is.
+      const to = previousParagraphIndex(paragraphTargets, sfRef.current.getIndex())
+      const moved = to != null && jumpToWordIndex(to)
+      // A command that deliberately does nothing still has to register, or the presenter says it
+      // again and again wondering whether they were heard.
+      flash = moved ? '↑ ¶ paragraph' : '¶ top of script'
     } else {
       nudgeLines(command === 'back' ? -VOICE_NUDGE_LINES : VOICE_NUDGE_LINES)
+      flash =
+        command === 'back'
+          ? `↑ back ${VOICE_NUDGE_LINES} lines`
+          : `↓ forward ${VOICE_NUDGE_LINES} lines`
     }
-    setCommandFlash(
-      command === 'back'
-        ? `↑ back ${VOICE_NUDGE_LINES} lines`
-        : command === 'forward'
-          ? `↓ forward ${VOICE_NUDGE_LINES} lines`
-          : '● Following',
-    )
+    setCommandFlash(flash)
     if (flashTimer.current) clearTimeout(flashTimer.current)
     flashTimer.current = setTimeout(() => setCommandFlash(null), 1400)
   }
@@ -562,11 +648,23 @@ export function PromptScreen() {
     }
   }
 
+  /**
+   * What went wrong, in words the presenter can act on.
+   *
+   * `useVosk` has always composed a precise reason and this screen used to discard it, so a
+   * refused microphone read as the same dead end as a missing one — "Manual — mic unavailable",
+   * with no hint that a permission prompt was waiting to be answered.
+   */
+  const sfFailureLabel =
+    sfFailure === 'model'
+      ? 'Manual — speech model unavailable · tap to retry'
+      : sfFailure === 'permission'
+        ? 'Manual — allow the mic, then tap to retry'
+        : 'Manual — mic unavailable · tap to retry'
+
   const sfStatusLabel =
     settings.smartFollow && sfFailure
-      ? sfFailure === 'model'
-        ? 'Manual — speech model unavailable'
-        : 'Manual — mic unavailable'
+      ? sfFailureLabel
       : !usingSmartFollow
         ? null
         : sf.loading
@@ -610,6 +708,11 @@ export function PromptScreen() {
         visible={controlsVisible}
         onExit={exit}
         status={commandFlash ?? sfStatusLabel}
+        // Actionable only while showing a failure — and never over a command flash, which is a
+        // transient confirmation with nothing to retry.
+        onStatusClick={
+          !commandFlash && settings.smartFollow && sfFailure ? retrySmartFollow : undefined
+        }
       />
       <PromptControls
         visible={controlsVisible}

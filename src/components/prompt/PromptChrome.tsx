@@ -5,10 +5,17 @@ interface PromptChromeProps {
   onExit: () => void
   /** Smart Follow status shown top-right (null = nothing, e.g. manual mode). */
   status?: string | null
+  /**
+   * When given, the status becomes a button that runs this — used to retry Smart Follow after the
+   * microphone was refused. A plain status stays a `<span>`: the root is `pointer-events-none` and
+   * hands live-ness to buttons alone, so only the actionable form takes any of the bar's width
+   * away from dragging the script.
+   */
+  onStatusClick?: () => void
 }
 
 /** Minimal top chrome for Prompt Mode: Exit (top-left) + optional Smart Follow status (top-right). */
-export function PromptChrome({ visible, onExit, status }: PromptChromeProps) {
+export function PromptChrome({ visible, onExit, status, onStatusClick }: PromptChromeProps) {
   return (
     <div
       data-prompt-chrome
@@ -32,9 +39,20 @@ export function PromptChrome({ visible, onExit, status }: PromptChromeProps) {
         </svg>
         Exit
       </button>
-      {status && (
-        <span className="text-xs font-medium tracking-wide text-fg-muted tabular-nums">{status}</span>
-      )}
+      {status &&
+        (onStatusClick ? (
+          <button
+            data-sf-status
+            onClick={onStatusClick}
+            className="rounded-md px-2 py-1 text-xs font-medium tracking-wide text-fg-muted tabular-nums underline decoration-dotted underline-offset-4 transition-colors hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {status}
+          </button>
+        ) : (
+          <span data-sf-status className="text-xs font-medium tracking-wide text-fg-muted tabular-nums">
+            {status}
+          </span>
+        ))}
     </div>
   )
 }
