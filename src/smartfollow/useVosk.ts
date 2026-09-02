@@ -24,8 +24,13 @@ interface Options {
   onCommandPhrase?: (text: string) => void
 }
 
-/** Which half of the start sequence gave out — the two have completely different remedies. */
-export type VoskErrorKind = 'mic' | 'model'
+/**
+ * Which part of the start sequence gave out — each has a completely different remedy, and only
+ * `permission` is one the presenter can act on from inside Prompt Mode. Keeping it separate from
+ * a plain `mic` failure is what lets the UI offer a retry instead of the same dead end it shows
+ * for a missing input device.
+ */
+export type VoskErrorKind = 'mic' | 'permission' | 'model'
 
 export interface VoskController {
   listening: boolean
@@ -143,10 +148,13 @@ export function useVosk({
       engineRef.current?.stop()
       setListening(false)
       setLoading(false)
-      setErrorKind(phase)
+      // NotAllowedError can only come from the mic half; a model 404 is never a permission
+      // problem, so the phase still decides everything else.
+      const denied = e instanceof Error && e.name === 'NotAllowedError'
+      setErrorKind(phase === 'mic' && denied ? 'permission' : phase)
       setError(
-        e instanceof Error && e.name === 'NotAllowedError'
-          ? 'Microphone permission denied — allow the mic and press Start again.'
+        denied
+          ? 'Microphone permission denied — allow the mic and try again.'
           : e instanceof Error
             ? e.message
             : 'Could not start the microphone.',

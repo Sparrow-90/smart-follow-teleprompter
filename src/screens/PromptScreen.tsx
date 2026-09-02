@@ -8,6 +8,7 @@ import { FocusZone } from '../components/prompt/FocusZone'
 import { PromptControls } from '../components/prompt/PromptControls'
 import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
+import type { VoskErrorKind } from '../smartfollow/useVosk'
 import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
 import { wordIndexAtAnchor, firstWordIndexIn, wordProgressTarget } from '../smartfollow/positionMap'
 import { paragraphJumpTargets, previousParagraphIndex } from '../smartfollow/paragraphJumps'
@@ -119,7 +120,7 @@ export function PromptScreen() {
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Why Smart Follow gave up, kept once it has. The mic and the model fail for unrelated reasons
   // and have unrelated remedies, so the chip must not blame the mic for a failed download.
-  const [sfFailure, setSfFailure] = useState<'mic' | 'model' | null>(null)
+  const [sfFailure, setSfFailure] = useState<VoskErrorKind | null>(null)
   useEffect(() => {
     if (sf.error) setSfFailure(sf.errorKind ?? 'mic')
   }, [sf.error, sf.errorKind])
@@ -200,6 +201,28 @@ export function PromptScreen() {
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
   }, [engine])
+
+  /**
+   * Try Smart Follow again after it gave out.
+   *
+   * `sfFailure` was write-once, so the fallback to manual was permanent for the session: pressing
+   * Play afterwards ran the manual branch and never re-attempted start(), which made "allow the
+   * mic and try again" advice the app itself made impossible to follow. Only leaving Prompt Mode
+   * and coming back cleared it.
+   *
+   * Clearing the flag is what re-arms `usingSmartFollow`; if the microphone is still refused,
+   * start() fails again and the effect above simply puts the chip back, so a retry costs nothing.
+   * The engine is paused first because the fallback may have left a manual scroll running, and
+   * follow mode should take over a still script rather than a moving one.
+   */
+  const retrySmartFollow = useCallback(() => {
+    engine.pause()
+    setSfFailure(null)
+    sfRef.current.start()
+    setPlaying(true)
+    setControlsVisible(true)
+    scheduleHide(true)
+  }, [engine, scheduleHide])
 
   const doExit = useCallback(() => {
     engine.pause()
@@ -613,11 +636,23 @@ export function PromptScreen() {
     }
   }
 
+  /**
+   * What went wrong, in words the presenter can act on.
+   *
+   * `useVosk` has always composed a precise reason and this screen used to discard it, so a
+   * refused microphone read as the same dead end as a missing one — "Manual — mic unavailable",
+   * with no hint that a permission prompt was waiting to be answered.
+   */
+  const sfFailureLabel =
+    sfFailure === 'model'
+      ? 'Manual — speech model unavailable · tap to retry'
+      : sfFailure === 'permission'
+        ? 'Manual — allow the mic, then tap to retry'
+        : 'Manual — mic unavailable · tap to retry'
+
   const sfStatusLabel =
     settings.smartFollow && sfFailure
-      ? sfFailure === 'model'
-        ? 'Manual — speech model unavailable'
-        : 'Manual — mic unavailable'
+      ? sfFailureLabel
       : !usingSmartFollow
         ? null
         : sf.loading
@@ -661,6 +696,11 @@ export function PromptScreen() {
         visible={controlsVisible}
         onExit={exit}
         status={commandFlash ?? sfStatusLabel}
+        // Actionable only while showing a failure — and never over a command flash, which is a
+        // transient confirmation with nothing to retry.
+        onStatusClick={
+          !commandFlash && settings.smartFollow && sfFailure ? retrySmartFollow : undefined
+        }
       />
       <PromptControls
         visible={controlsVisible}

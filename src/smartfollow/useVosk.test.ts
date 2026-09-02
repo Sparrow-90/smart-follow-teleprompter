@@ -16,8 +16,13 @@ interface FakeEngine {
   /** Engine calls in the order `start()` made them — the model download is not instant in life. */
   calls: string[]
   loadImpl: () => Promise<void>
+  startMicImpl: () => Promise<void>
 }
-const engine = { calls: [], loadImpl: async () => {} } as unknown as FakeEngine
+const engine = {
+  calls: [],
+  loadImpl: async () => {},
+  startMicImpl: async () => {},
+} as unknown as FakeEngine
 
 vi.mock('./stt/voskEngine', () => ({
   VOSK_MODELS: { pl: 'model.tar.gz' },
@@ -29,6 +34,7 @@ vi.mock('./stt/voskEngine', () => ({
     },
     startMic: async () => {
       engine.calls.push('startMic')
+      await engine.startMicImpl()
     },
     startRecognition: () => {
       engine.calls.push('startRecognition')
@@ -52,6 +58,7 @@ vi.mock('./stt/voskEngine', () => ({
 beforeEach(() => {
   engine.calls = []
   engine.loadImpl = async () => {}
+  engine.startMicImpl = async () => {}
 })
 
 function mount() {
@@ -145,6 +152,29 @@ describe('useVosk — start order', () => {
     await act(async () => hook.result.current.start())
     // The mic was granted; blaming it sends the presenter to check permissions for nothing.
     expect(hook.result.current.errorKind).toBe('model')
+  })
+
+  it('tells a DENIED microphone apart from a broken one', async () => {
+    // The two have different remedies and only one of them the presenter can act on. A denial is
+    // recoverable — allow the mic and try again — so the UI has to be able to say so specifically
+    // rather than showing the same dead end for a missing input device.
+    const denied = new Error('Permission denied')
+    denied.name = 'NotAllowedError'
+    engine.startMicImpl = async () => {
+      throw denied
+    }
+    const { hook } = mount()
+    await act(async () => hook.result.current.start())
+    expect(hook.result.current.errorKind).toBe('permission')
+  })
+
+  it('reports any other microphone failure as a plain mic failure', async () => {
+    engine.startMicImpl = async () => {
+      throw new Error('Requested device not found')
+    }
+    const { hook } = mount()
+    await act(async () => hook.result.current.start())
+    expect(hook.result.current.errorKind).toBe('mic')
   })
 
   it('releases the microphone when the model fails to load', async () => {

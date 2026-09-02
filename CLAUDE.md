@@ -127,6 +127,20 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   narrower claims all held: promptly/prompt are English-only, asystent and the klik- family are
   Polish, and `prąd` is present only with its ogonek — which is exactly why the folded table entry
   is `prad`.) The device check remains, but only for whether a given voice lands the word.
+- **A refused mic is recoverable; a missing one is not — and the UI must tell them apart.**
+  `VoskErrorKind` is `'permission' | 'mic' | 'model'`, split because only the first is something
+  the presenter can act on from inside Prompt Mode. Two defects lived here: `useVosk` composed a
+  precise reason and `PromptScreen` discarded it (every mic problem read as "Manual — mic
+  unavailable"), and `sfFailure` was **write-once**, so the fallback to manual was permanent for
+  the session — pressing Play afterwards ran the manual branch and never re-attempted `start()`,
+  making the app's own "allow the mic and try again" impossible to follow. The status chip is now
+  a button (`data-sf-status`) that clears the flag and retries. It is live only while showing a
+  failure: the chrome root is `pointer-events-none` and hands live-ness to buttons alone, so an
+  always-on button would take a slice of the full-width bar away from dragging the script.
+  `verify-mic-recovery.mjs` pins it — and note it **stubs** the denial, because headless Chromium
+  with permissions cleared rejects `getUserMedia` with `NotSupportedError`, never the
+  `NotAllowedError` a real browser raises, so the permission path is unreachable through
+  Playwright's permission API.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -214,6 +228,7 @@ node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the scri
 node scripts/verify-tap-controls.mjs # a tap on Play plays, and leaves the chrome up (touch input)
 node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot
 node scripts/verify-paragraph-marker.mjs # markers render numbered; "klik akapit" steps back a paragraph
+node scripts/verify-mic-recovery.mjs # a refused mic says why, and the retry reopens it in place
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
 ```
