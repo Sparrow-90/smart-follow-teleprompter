@@ -25,19 +25,20 @@ const check = (ok, label, detail = '') => {
 }
 
 // --- the two numbering paths must start from the same place ----------------
-// Prompt Mode counts markers in JS; the editor counts them with a CSS counter. Nothing at
+// Prompt Mode counts markers in JS (promptBlocks.toRenderBlocks); the editor counts them with a
+// CSS counter. Nothing at
 // runtime can catch them drifting apart (a CSS counter's resolved value is not readable from
 // the DOM), so the start values are pinned at the source instead. Both mean "the section this
 // marker OPENS", the top of the script being section 1.
 {
   const css = readFileSync('src/index.css', 'utf8')
-  const tsx = readFileSync('src/components/prompt/PromptText.tsx', 'utf8')
+  const ts = readFileSync('src/components/prompt/promptBlocks.ts', 'utf8')
   const cssStart = css.match(/counter-reset:\s*section\s+(\d+)/)?.[1]
-  const jsStart = tsx.match(/const section = \{\s*n:\s*(\d+)\s*\}/)?.[1]
+  const jsStart = ts.match(/let section = (\d+)/)?.[1]
   check(
     cssStart != null && cssStart === jsStart,
     'editor and Prompt Mode number markers from the same start value',
-    `index.css=${cssStart} PromptText=${jsStart}`,
+    `index.css=${cssStart} promptBlocks=${jsStart}`,
   )
 }
 
@@ -88,6 +89,9 @@ const rendered = await p.evaluate(() =>
   })),
 )
 check(rendered.length === 2, 'both markers render in Prompt Mode', `found ${rendered.length}`)
+// Exact match is safe only because this fixture has no pauses. A gap that collapses a marker AND
+// a pause carries both glyphs, so its textContent reads "• • •2" — see verify-line-gap.mjs, which
+// asserts that case with .includes() for exactly this reason.
 check(
   rendered.map((r) => r.text).join(',') === '2,3',
   'markers are numbered by the section they OPEN (top of script is 1)',
