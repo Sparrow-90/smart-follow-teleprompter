@@ -24,9 +24,14 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures++
 }
 
-/** The anchor, and where the gradient has taken the text past reading. Both from FocusZone.tsx. */
+/**
+ * Both from FocusZone.tsx. The clear band ends CLEAR_LINES_BELOW line pitches under the anchor —
+ * measured in pitches, not in percent of the screen, because a pitch is a different share of the
+ * viewport at every preset (5.7% at Close, 17.8% at Distance on a 732px-tall window). A fixed
+ * percentage there erased a quarter of the next line at Close and two thirds of it at Distance.
+ */
 const FOCUS_ANCHOR = 0.4
-const FADE_LIMIT = 0.82
+const CLEAR_LINES_BELOW = 2
 
 const P1 = 'jego celem jest sprawdzenie czy'
 const P2 = 'aplikacja dziala poprawnie'
@@ -110,6 +115,15 @@ for (const preset of PRESETS) {
           const w = el.querySelector('[data-w]')
           return w ? Number(w.getAttribute('data-w')) : null
         }),
+        // The px term inside the resolved gradient's clear stop, e.g. `40% + 261px`. Null if the
+        // stop carries no px at all — which is the regression this guards against.
+        clearStopPx: (() => {
+          const grad = [...document.querySelectorAll('div[aria-hidden]')]
+            .map((el) => getComputedStyle(el).backgroundImage)
+            .find((bg) => bg.includes('gradient') && bg.includes('rgba(0, 0, 0, 0)'))
+          const px = grad?.match(/40%\s*\+\s*([\d.]+)px/)
+          return px ? Number(px[1]) : null
+        })(),
         sectionText: column.querySelector('[data-block="section"]')?.textContent?.trim() ?? null,
         hasRules: (column.querySelector('[data-block="section"]')?.querySelectorAll('span.h-px').length ?? 0) === 2,
         hasPauseGlyph: !!column.querySelector('[data-pause]'),
@@ -149,13 +163,22 @@ for (const preset of PRESETS) {
       `${pitches.toFixed(2)} pitches`,
     )
     // The real test of the whole change: having finished the line at the Focus Zone, can the
-    // presenter read straight on, or is the next line in the fade?
-    const budget = ((FADE_LIMIT - FOCUS_ANCHOR) * m.viewportHeight) / m.pitch
+    // presenter read straight on, or is the next line in the fade? The next line's TOP must reach
+    // the anchor no later than the end of the clear band — that is exactly what the Focus Zone
+    // promises, and capping the gap at one pitch is what keeps the promise reachable.
     const advance = m.advancePx / m.pitch
     check(
-      advance <= budget,
-      `${label}: the next line stays inside the legible band below the anchor`,
-      `next line +${advance.toFixed(2)} pitches, band is ${budget.toFixed(2)}`,
+      advance <= CLEAR_LINES_BELOW + 0.02,
+      `${label}: the next line begins inside the Focus Zone's clear band`,
+      `next line +${advance.toFixed(2)} pitches, clear band runs to ${CLEAR_LINES_BELOW}`,
+    )
+    // And the band really is where FocusZone says: the resolved gradient must hold the clear stop
+    // in PITCHES, not at a fixed percentage. A regression to a percentage passes every check
+    // above at Standard and silently greys the next line out at Distance.
+    check(
+      m.clearStopPx != null && Math.abs(m.clearStopPx - CLEAR_LINES_BELOW * m.pitch) < 2,
+      `${label}: the gradient's clear band is measured in line pitches`,
+      `stop at +${m.clearStopPx?.toFixed(0) ?? '?'}px, expected +${(CLEAR_LINES_BELOW * m.pitch).toFixed(0)}px`,
     )
     check(!m.gapIsLine, `${label}: a gap is not a [data-prompter-line]`)
     // P1 holds five words (indices 0-4), so P2 must open at 5 however many blocks were collapsed

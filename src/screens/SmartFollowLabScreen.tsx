@@ -209,7 +209,7 @@ export function SmartFollowLabScreen() {
             contentRef={contentRef}
             wordIndices
           />
-          <FocusZone readingMarker />
+          <FocusZone readingMarker lineHeightPx={preset.fontSize * preset.lineHeight} />
         </div>
       )}
 

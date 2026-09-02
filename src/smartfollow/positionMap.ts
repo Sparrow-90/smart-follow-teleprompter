@@ -3,7 +3,12 @@
  * we move the content so the line sits at the Focus Zone anchor (~40% of the viewport height).
  */
 
-const FOCUS_ANCHOR = 0.4
+/**
+ * Where the line being read sits, as a fraction of the viewport height. Exported because the
+ * Focus Zone's gradient has to fade from the same place the engine aims at — if the two drift, the
+ * spotlight stops sitting on the line the presenter is actually reading.
+ */
+export const FOCUS_ANCHOR = 0.4
 
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
 
