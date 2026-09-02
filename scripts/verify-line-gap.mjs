@@ -14,6 +14,8 @@
  *
  * Run with the dev server up: node scripts/verify-line-gap.mjs
  */
+import { readFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE ?? 'http://localhost:5173'
@@ -25,13 +27,51 @@ const check = (ok, label, detail = '') => {
 }
 
 /**
- * Both from FocusZone.tsx. The clear band ends CLEAR_LINES_BELOW line pitches under the anchor —
- * measured in pitches, not in percent of the screen, because a pitch is a different share of the
- * viewport at every preset (5.7% at Close, 17.8% at Distance on a 732px-tall window). A fixed
- * percentage there erased a quarter of the next line at Close and two thirds of it at Distance.
+ * The clear band ends CLEAR_LINES_BELOW line pitches under the anchor — measured in pitches, not in
+ * percent of the screen, because a pitch is a different share of the viewport at every preset (5.7%
+ * at Close, 17.8% at Distance on a 732px-tall window). A fixed percentage there erased a quarter of
+ * the next line at Close and two thirds of it at Distance.
+ *
+ * The anchor is READ FROM SOURCE rather than repeated here. It is the number the whole Focus Zone
+ * is built around — the follow target, the tap-to-jump geometry, the gradient's clear stop, the
+ * reading marker, and the padding that lets the first and last lines reach it — so a copy of it in
+ * this file would be one more place for it to drift from.
  */
-const FOCUS_ANCHOR = 0.4
+const FOCUS_ANCHOR = Number(
+  readFileSync('src/smartfollow/positionMap.ts', 'utf8').match(
+    /export const FOCUS_ANCHOR = ([\d.]+)/,
+  )?.[1],
+)
 const CLEAR_LINES_BELOW = 2
+
+// --- the anchor is written once, and nowhere else ---------------------------
+// Every consumer must import FOCUS_ANCHOR. These are the idioms it kept being re-typed as: the
+// tap-to-jump geometry (`- 0.4 * vpRect.height`), the prompter's top/bottom padding, and the
+// reading marker's offset. Each one silently disagrees with the others the moment the anchor moves.
+{
+  check(Number.isFinite(FOCUS_ANCHOR), 'FOCUS_ANCHOR is exported from positionMap', `read ${FOCUS_ANCHOR}`)
+  const pct = FOCUS_ANCHOR * 100
+  const forbidden = [
+    // `[\w.]` not `\w`, so this reaches through a member expression — the literal it is here to
+    // catch was `0.4 * vpRect.height`, and \w* stops dead at the dot.
+    [new RegExp(`${FOCUS_ANCHOR}\\s*\\*\\s*[\\w.]*[Hh]eight`), 'the anchor multiplied by a height'],
+    [new RegExp(`['"\`]${pct}vh['"\`]`), `a literal '${pct}vh' padding`],
+    [new RegExp(`['"\`]${100 - pct}vh['"\`]`), `a literal '${100 - pct}vh' padding`],
+    [new RegExp(`top:\\s*['"\`]${pct}%['"\`]`), `a literal top: '${pct}%'`],
+  ]
+  const files = execSync('git ls-files "src/**/*.ts" "src/**/*.tsx"', { encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
+  const hits = []
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8')
+    for (const [re, what] of forbidden) {
+      const line = src.split('\n').findIndex((l) => re.test(l) && !l.trimStart().startsWith('*'))
+      if (line >= 0) hits.push(`${f}:${line + 1} (${what})`)
+    }
+  }
+  check(hits.length === 0, 'nothing in src/ writes the Focus Zone anchor as a literal', hits.join(', '))
+}
 
 const P1 = 'jego celem jest sprawdzenie czy'
 const P2 = 'aplikacja dziala poprawnie'

@@ -120,11 +120,19 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   `min(92%, calc(40% + CLEAR_LINES_BELOW x lineHeightPx))`; `calc()` mixes % and px inside a
   gradient stop, so the browser resolves it against the element's real height and nothing measures
   or re-renders on resize. Every preset then keeps the same number of readable lines below the
-  anchor, which is what the gradient was always trying to say. `FOCUS_ANCHOR` is exported from
-  `positionMap` and used by both the stop and the reading marker, so the spotlight cannot drift
-  from where the engine aims. `SetupPreview` passes its OWN pitch (`fontSize x PREVIEW_SCALE x
+  anchor, which is what the gradient was always trying to say. `SetupPreview` passes its OWN pitch (`fontSize x PREVIEW_SCALE x
   lineHeight`) — hand it Prompt Mode's and the preview clears a band several sample-lines tall and
   shows no fade at all.
+- **The Focus Zone anchor is written ONCE — `FOCUS_ANCHOR` in `positionMap`.** It had been retyped
+  as a literal in four places that all have to agree: the tap-to-jump geometry in `PromptScreen`
+  (which was inlining `scrollTargetForLine`'s body rather than calling it), the gradient's clear
+  stop and the reading marker in `FocusZone`, `PromptText`'s `40vh`/`60vh` padding (that padding IS
+  the anchor — it is what lets the first line start at the Focus Zone and the last line reach it),
+  and `SetupPreview`'s own animated marker. Move the anchor with any of those hardcoded and the tap
+  lands somewhere the follow does not, or the first and last lines never reach the reading line.
+  `verify-line-gap.mjs` reads the value out of the source rather than repeating it, and greps
+  `src/` for the four idioms it kept being retyped as — each pattern was checked by reintroducing
+  the literal and watching the check fail, because a guard that cannot fail is not a guard.
 - **A gap between two lines may cost ONE line pitch, and no more.** With the clear band running two
   pitches below the anchor, a gap of one pitch is exactly what lets the next line begin inside it.
   The budget does not vary by screen: `resolvePreset` scales text by whichever viewport axis is
