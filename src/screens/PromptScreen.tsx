@@ -122,8 +122,15 @@ export function PromptScreen() {
   // and have unrelated remedies, so the chip must not blame the mic for a failed download.
   const [sfFailure, setSfFailure] = useState<VoskErrorKind | null>(null)
   useEffect(() => {
-    if (sf.error) setSfFailure(sf.errorKind ?? 'mic')
-  }, [sf.error, sf.errorKind])
+    if (!sf.error) return
+    setSfFailure(sf.errorKind ?? 'mic')
+    // Hand the engine back to auto mode, or the "fallback to manual" is a fiction: start() sets
+    // 'follow' synchronously BEFORE the microphone can fail, nothing else ever sets 'auto' back,
+    // and tick()'s follow branch ignores playingFlag entirely — it only damps toward
+    // targetPosition. So Play would flip a flag no code reads, leaving the presenter with a frozen
+    // script, visible speed controls that do nothing, and no way to move the text at all.
+    engine.setMode('auto')
+  }, [sf.error, sf.errorKind, engine])
   const usingSmartFollow = settings.smartFollow && !sfFailure
 
   // Refs so long-lived callbacks/effects see the latest without re-subscribing every render.
@@ -212,11 +219,16 @@ export function PromptScreen() {
    *
    * Clearing the flag is what re-arms `usingSmartFollow`; if the microphone is still refused,
    * start() fails again and the effect above simply puts the chip back, so a retry costs nothing.
-   * The engine is paused first because the fallback may have left a manual scroll running, and
+   * The engine is paused first because the fallback really can leave a manual scroll running, and
    * follow mode should take over a still script rather than a moving one.
    */
   const retrySmartFollow = useCallback(() => {
     engine.pause()
+    // Adopt wherever the manual scroll got to as the follow target. start() switches straight back
+    // to follow mode, which damps toward `targetPosition` — still holding whatever Smart Follow
+    // last aimed at, usually 0. Without this the retry rewinds the presenter to the top of the
+    // script. Same trap pauseFollowing, restart and nudgeLines each guard against.
+    engine.setTargetPosition(engine.destination)
     setSfFailure(null)
     sfRef.current.start()
     setPlaying(true)

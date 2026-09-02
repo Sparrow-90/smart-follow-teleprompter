@@ -129,7 +129,7 @@ export const GRAMMAR_UNKNOWN = '[unk]'
  *
  * Open-vocabulary recognition is what failed in Polish: the decoder had to pick "klik góra" out of
  * a ~280k-word lexicon, against every inflection that sounds like it (`górę`, `górą`, `górze`…).
- * A grammar turns that into a choice between three phrases and "not a command", which is a
+ * A grammar turns that into a choice between four phrases and "not a command", which is a
  * different and far easier problem — and it is why this needs no guessing about which inflection
  * comes back: the recognizer can only return what is listed here.
  *
@@ -137,8 +137,12 @@ export const GRAMMAR_UNKNOWN = '[unk]'
  * comes from being small; adding near-identical alternatives just reintroduces the confusion it
  * exists to remove. The broader WAKE_WORDS list still applies to the open-vocabulary path.
  *
- * Never mix languages: every word must be in the loaded model's lexicon, and the two models share
- * none of these.
+ * Never mix languages: every word must be in the loaded model's lexicon. Note that this is a
+ * requirement about coverage, NOT a claim that the lexicons are disjoint — they are not, and
+ * `verify-lexicon.mjs` prints the overlap (the Polish model holds click/up/down/go, the English
+ * one holds start). A mixed grammar would be partly undecodable; it is the wake-word + verb pair
+ * at the end of the window, never lexicon separation, that keeps the script from firing commands.
+ * That script also fails the build if any word here is missing from its model.
  */
 export function commandGrammarFor(lang: string): string[] {
   const phrases = lang.startsWith('pl')

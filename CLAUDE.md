@@ -132,8 +132,14 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   the presenter can act on from inside Prompt Mode. Two defects lived here: `useVosk` composed a
   precise reason and `PromptScreen` discarded it (every mic problem read as "Manual — mic
   unavailable"), and `sfFailure` was **write-once**, so the fallback to manual was permanent for
-  the session — pressing Play afterwards ran the manual branch and never re-attempted `start()`,
-  making the app's own "allow the mic and try again" impossible to follow. The status chip is now
+  the session, making the app's own "allow the mic and try again" impossible to follow.
+  **And the fallback did not work at all**: `useSmartFollow.start()` sets the engine to `'follow'`
+  synchronously *before* the mic can fail, nothing else ever calls `setMode('auto')`, and
+  `tick()`'s follow branch ignores `playingFlag` — so Play flipped a flag no code read and the
+  script sat frozen with live-looking speed controls. Falling back now restores `'auto'`, and the
+  retry pins `setTargetPosition(engine.destination)` first, or follow mode damps back to its stale
+  target and rewinds the presenter to the top — the same trap `pauseFollowing`, `restart` and
+  `nudgeLines` each guard against. The status chip is now
   a button (`data-sf-status`) that clears the flag and retries. It is live only while showing a
   failure: the chrome root is `pointer-events-none` and hands live-ness to buttons alone, so an
   always-on button would take a slice of the full-width bar away from dragging the script.

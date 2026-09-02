@@ -79,15 +79,28 @@ check(
 )
 check(denied.actionable, 'and the status is a button offering the retry')
 
-// --- the old dead end: pressing Play again must not be the only option ------
-// (Play still falls back to manual scrolling on purpose; that is the graceful degradation.)
+// --- the fallback has to actually WORK, not just look present ---------------
+// Counting the speed buttons proved nothing: they rendered perfectly while the script sat still.
+// useSmartFollow.start() sets the engine to 'follow' before the mic can fail, nothing ever sets
+// 'auto' back, and tick()'s follow branch ignores playingFlag — so Play set a flag no code read
+// and the presenter was stranded with a frozen script and no way to move it.
 check(
   (await p.getByRole('button', { name: /faster|slower/i }).count()) > 0,
-  'manual speed controls appear, so the presenter is not stranded meanwhile',
+  'manual speed controls appear',
+)
+await p.getByRole('button', { name: /play|pause/i }).first().click({ force: true })
+const before = await p.evaluate(() => window.__prompter.position())
+await sleep(1500)
+const after = await p.evaluate(() => window.__prompter.position())
+check(
+  after - before > 5,
+  'and pressing Play actually SCROLLS the script — the fallback is real',
+  `position ${before.toFixed(1)} -> ${after.toFixed(1)}`,
 )
 
 // --- retry, without leaving Prompt Mode ------------------------------------
 // The stub above now lets the mic through, as granting permission would.
+const beforeRetry = await p.evaluate(() => window.__prompter.position())
 await p.getByRole('button', { name: /allow the mic/i }).click()
 // Wait for a state that only a LIVE microphone produces. "Smart Follow" is the idle label shown
 // before listening starts, so stopping at the first non-failure text would prove only that the
@@ -108,6 +121,16 @@ check(
 check(
   (await p.getByRole('button', { name: /faster|slower/i }).count()) === 0,
   'and the manual speed controls are gone again',
+)
+
+// Retrying must not throw away the ground the presenter covered while scrolling manually. Follow
+// mode damps toward targetPosition, which still holds whatever Smart Follow last aimed at —
+// usually 0 — so without adopting the current position the retry rewinds them to the top.
+const afterRetry = await p.evaluate(() => window.__prompter.position())
+check(
+  afterRetry > beforeRetry - 20,
+  'and the retry does NOT rewind the script to the top',
+  `position ${beforeRetry.toFixed(1)} -> ${afterRetry.toFixed(1)}`,
 )
 
 console.log(failures === 0 ? '\nAll checks passed' : `\n${failures} check(s) failed`)

@@ -187,12 +187,24 @@ check(
 )
 
 // --- it must not fire on the script itself ---------------------------------
-const beforeProse = await idx()
+// Read from a position the command would visibly MOVE. The earlier version took this reading
+// immediately after asserting the index was already at targets[0], which made its own escape
+// clause (`beforeProse === targets[0]`) permanently true — the check could not fail however
+// freely "akapit" fired, and tested nothing at all.
 await sleep(1400)
-await say(['zaczynamy', 'nowy', 'akapit', 'w', 'tym', 'miejscu'])
+await say(['the', 'local', 'team', 'won', 'the', 'final'])
+const beforeProse = await idx()
 check(
-  (await idx()) !== targets[0] || beforeProse === targets[0],
+  beforeProse > targets[2],
+  'back inside the third paragraph, where a stray command would be obvious',
+  `index ${beforeProse}`,
+)
+await say(['zaczynamy', 'nowy', 'akapit', 'w', 'tym', 'miejscu'])
+const afterProse = await idx()
+check(
+  afterProse >= targets[2],
   'ordinary prose containing "akapit" does not fire the command',
+  `index ${beforeProse} -> ${afterProse}; a stray command would have pulled it to ${targets[2]} or below`,
 )
 
 console.log(failures === 0 ? '\nAll checks passed' : `\n${failures} check(s) failed`)
