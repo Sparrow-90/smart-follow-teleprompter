@@ -57,7 +57,13 @@ export function SetupPreview({ preset, presetLabel, mirror, readingMarker }: Set
         component Prompt Mode shares, so the prompter path stays provably untouched.
         Eight lines of duplication is the right trade for that guarantee.
       */}
-      <FocusZone readingMarker={false} />
+      <FocusZone
+        readingMarker={false}
+        // The preview's own line pitch, not Prompt Mode's: its text is shrunk by PREVIEW_SCALE, so
+        // handing over the real one would clear a band several times the height of a sample line
+        // and the preview would show no fade at all.
+        lineHeightPx={preset.fontSize * PREVIEW_SCALE * preset.lineHeight}
+      />
 
       <AnimatePresence>
         {readingMarker && (

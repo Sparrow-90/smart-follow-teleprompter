@@ -695,7 +695,7 @@ export function PromptScreen() {
         contentRef={contentRef}
         wordIndices={usingSmartFollow}
       />
-      <FocusZone readingMarker={settings.readingMarker} />
+      <FocusZone readingMarker={settings.readingMarker} lineHeightPx={lineHeightPx} />
       {DEBUG_STT && (
         <div className="pointer-events-none absolute right-3 bottom-3 z-40 max-w-[70vw] rounded-lg bg-black/80 p-3 font-mono text-[11px] leading-snug text-white/80">
           <div className="mb-1 text-white/40">

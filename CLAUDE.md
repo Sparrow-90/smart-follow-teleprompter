@@ -112,12 +112,25 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   module exists for. The marker **replaces** the blank line a paragraph break used to become; emit
   both and every paragraph gains a phantom gap. `SECTION_HTML` (bare) is the paste separator,
   `SECTION_INSERT_HTML` (with a trailing empty line for the caret) is the toolbar button's alone.
-- **A gap between two lines may cost ONE line pitch, and no more.** The Focus Zone holds the line
-  being read at 40% of the viewport and its gradient has faded the text to near the background by
-  82%, so there are only ~2.4 line pitches of legible runway below the anchor — and that number is
-  the *same on every screen*, because `resolvePreset` scales text by whichever viewport axis is
-  tighter (`0.6 x 834 / 150`). So a gap is not a small-screen problem and nothing about it may be
-  conditioned on viewport size. Measured at Distance: a marker cost 0.93 pitches, a blank line 1.60,
+- **The Focus Zone's clear band is measured in LINE PITCHES, not in percent of the screen.** A
+  pitch is a different share of the viewport at every preset — 5.7% at Close but 17.8% at Distance
+  on a 732px-tall window — so the old fixed stops (clear to 50%, `62% bg` by 82%) erased 22% of the
+  next line at Close and **67%** of it at Distance. Same gradient, completely different promise.
+  `FocusZone` now takes `lineHeightPx` and puts the clear stop at
+  `min(92%, calc(40% + CLEAR_LINES_BELOW x lineHeightPx))`; `calc()` mixes % and px inside a
+  gradient stop, so the browser resolves it against the element's real height and nothing measures
+  or re-renders on resize. Every preset then keeps the same number of readable lines below the
+  anchor, which is what the gradient was always trying to say. `FOCUS_ANCHOR` is exported from
+  `positionMap` and used by both the stop and the reading marker, so the spotlight cannot drift
+  from where the engine aims. `SetupPreview` passes its OWN pitch (`fontSize x PREVIEW_SCALE x
+  lineHeight`) — hand it Prompt Mode's and the preview clears a band several sample-lines tall and
+  shows no fade at all.
+- **A gap between two lines may cost ONE line pitch, and no more.** With the clear band running two
+  pitches below the anchor, a gap of one pitch is exactly what lets the next line begin inside it.
+  The budget does not vary by screen: `resolvePreset` scales text by whichever viewport axis is
+  tighter, so lines-below-anchor is viewport-invariant (`0.6 x 834 / 150`). A gap is therefore not
+  a small-screen problem and nothing about it may be conditioned on viewport size.
+  Measured at Distance: a marker cost 0.93 pitches, a blank line 1.60,
   and a marker with a blank line beside it **2.23** — putting the next line 3.23 pitches down, past
   the fade and off the bottom edge, so the presenter finished a line with nothing readable to move
   to. `promptBlocks.toRenderBlocks` collapses each run of markers, pauses and blank lines into ONE
@@ -130,7 +143,9 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   **overflows** the box, which is shorter than a line: shrinking it to fit made the dots nearly
   invisible at Distance. So the invariant `verify-line-gap.mjs` asserts is not "content fits the
   box" but "content never reaches into the text either side" — the gap's SPACE is what is capped.
-  It pins all of this at all three presets, `Close` (lineHeight 1.4) being the tightest box.
+  It pins all of this at all three presets, `Close` (lineHeight 1.4) being the tightest box, and it
+  reads the RESOLVED gradient to pin the clear stop in px — a regression to a fixed percentage
+  passes every other check at Standard and silently greys the next line out at Distance.
   Note this made `ScriptToken.lineIndex` stop matching the Nth `[data-prompter-line]` (blank lines
   no longer render as lines); nothing in the follow path used it, and the comment there now says so.
 - **The editor's marker insert needs its trailing empty line — do not tidy it away.** Measured:
