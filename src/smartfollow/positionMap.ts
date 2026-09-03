@@ -112,6 +112,53 @@ export function pickIndexNearestAnchor(
   return bestIndex
 }
 
+/**
+ * Which rendered line is sitting at the Focus Zone right now, as a DOM element.
+ *
+ * A sibling of {@link wordIndexAtAnchor} rather than a refactor of it, because the two answer
+ * different questions from different evidence: every path in that one ends at
+ * {@link firstWordIndexIn}, so it needs the `[data-w]` spans, and those exist only while Smart
+ * Follow is on (`PromptText wordIndices`). Manual mode has no word indices at all, so the element
+ * itself is the only thing there is to hold on to — and holding the element is what lets a caller
+ * reflow the text and then ask where that same line ended up.
+ *
+ * Same probe geometry as wordIndexAtAnchor: the anchor point, then half a pitch either side to
+ * cover the inter-block margins, then nearest-by-rect over every line.
+ */
+export function lineElementAtAnchor(
+  viewportEl: Element | null | undefined,
+  anchor: number = FOCUS_ANCHOR,
+  lineHeightPx = 0,
+): Element | null {
+  if (!viewportEl) return null
+  const vp = viewportEl.getBoundingClientRect()
+  const column = viewportEl.querySelector('[data-prompter-column]')
+  const col = column?.getBoundingClientRect()
+  const anchorY = vp.top + anchor * vp.height
+  const x = col && col.width > 0 ? col.left + col.width / 2 : vp.left + vp.width / 2
+
+  const canProbe =
+    typeof document !== 'undefined' && typeof document.elementFromPoint === 'function'
+  const probes = lineHeightPx > 0 ? [0, -lineHeightPx / 2, lineHeightPx / 2] : [0]
+  for (const dy of probes) {
+    const hit = canProbe ? document.elementFromPoint(x, anchorY + dy) : null
+    const line = hit?.closest('[data-prompter-line]')
+    if (line) return line
+  }
+
+  let best: Element | null = null
+  let bestDistance = Infinity
+  for (const el of viewportEl.querySelectorAll('[data-prompter-line]')) {
+    const r = el.getBoundingClientRect()
+    const distance = anchorY < r.top ? r.top - anchorY : anchorY > r.bottom ? anchorY - r.bottom : 0
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = el
+    }
+  }
+  return best
+}
+
 /** The token index of the first indexed word inside a rendered line, or null if it has none. */
 export function firstWordIndexIn(lineEl: Element): number | null {
   const word = lineEl.querySelector('[data-w]')

@@ -19,6 +19,9 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   manual override, re-anchor recovery). On-device Vosk speech → matcher → gentle word-level follow.
   Confirmed working live (Polish, Safari). `#lab` survives as a dev harness, not the product path.
   PRD Phase 3's remaining gap is **pause behaviour** — `tokenizeScript` still drops PAUSE blocks.
+- **Manual text size — shipped** (branch `manual-text-size`). The `close` preset is gone; Reading
+  distance is two starting points and the presenter sets the size themselves in Prompt Mode, with
+  A− / A+. Size is the one setting that cannot be decided at a desk — it is a fact about the room.
 - **Paragraph markers — shipped** (branch `paragraph-markers`). A `section` block the presenter
   places (or that a reflowed PDF paste places for them), rendered as a numbered rule, with
   **"Klik akapit" / "Click paragraph"** jumping BACK a paragraph. Recovery, not navigation.
@@ -60,7 +63,13 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
 
 ## Key decisions / gotchas
 
-- **Preset sizes are authored for one tablet and fitted to the real screen** by `resolvePreset`.
+- **Preset sizes are authored for one tablet, fitted to the real screen, and then scaled by the
+  presenter** — all three in `resolvePreset`, whose result is the single source of every size in
+  Prompt Mode. `settings.textScale` (`applyTextScale`, folded in last and rounded once) must never
+  be applied at render time in `PromptText`: `lineHeightPx` is derived from this object, and Smart
+  Follow aims a line with it, `FocusZone` measures its clear band in it and `nudgeLines` steps in
+  whole multiples of it — a size the renderer knows about and this object does not puts all three
+  on a line the presenter is not reading.
   Two scales, deliberately: **text** grows by whichever viewport axis is tighter (height decides
   how many lines fit, and the presenter reads by lines), **the column** grows by width (width is
   the only thing limiting it — tying it to the tighter axis left a quarter of a wide screen empty).
@@ -68,6 +77,14 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   Follow aims at a line with that number, so if the rendered text scales and it doesn't, the
   follow targets a line the presenter isn't reading. That coupling is why this can't be a CSS
   `vw` trick. `verify-preset-size.mjs` asserts the two still agree.
+- **Removing a value from a persisted union is a migration, not a type change.** `loadSettings`
+  used to merge whatever was in localStorage over the defaults through a blind cast, which is
+  survivable only while the shape grows. Narrowing `Preset` broke it: a presenter who had chosen
+  Close has `preset: 'close'` on disk, `PRESETS['close']` is `undefined`, and Prompt Mode renders
+  nothing at all on their first load — and it never reproduces in a dev profile that happens to
+  hold `'standard'`. `migrateSettings` (in `model/settings.ts`, the parse boundary's only
+  validation) maps it to Standard at `TEXT_SCALE_MIN`, which is exactly the font Close gave, and
+  is why the floor is 34/50 rather than a round number.
 - **Paste is reflowed, because a PDF copy has no paragraphs.** Copying from a PDF gives a newline
   at every *visual* line ending, so block-per-line rendering turns one paragraph into eight.
   `reflowPastedText` rejoins them, keying on width rather than punctuation: hard wrapping pushes
@@ -151,11 +168,34 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   **overflows** the box, which is shorter than a line: shrinking it to fit made the dots nearly
   invisible at Distance. So the invariant `verify-line-gap.mjs` asserts is not "content fits the
   box" but "content never reaches into the text either side" — the gap's SPACE is what is capped.
-  It pins all of this at all three presets, `Close` (lineHeight 1.4) being the tightest box, and it
+  It pins all of this at both presets plus the smallest manual size. The box is
+  `lineHeight - 2 x 0.45em` — a RATIO — so which case is tightest is decided by lineHeight alone:
+  that used to be `Close` at 1.4, and with Close retired it is Standard's 1.45, which no manual
+  size can beat. What the smallest-size run earns instead is that every px number on screen is
+  different there, so it pins the gap, the advance and the gradient's clear stop to the SCALED
+  pitch rather than one baked in at the preset. It
   reads the RESOLVED gradient to pin the clear stop in px — a regression to a fixed percentage
   passes every other check at Standard and silently greys the next line out at Distance.
   Note this made `ScriptToken.lineIndex` stop matching the Nth `[data-prompter-line]` (blank lines
   no longer render as lines); nothing in the follow path used it, and the comment there now says so.
+- **Changing the text size REFLOWS the script, and the engine's position is in pixels** — so the
+  same number means a different place in the text afterwards, and a size change without a
+  re-anchor throws the presenter somewhere else. `PromptScreen` captures the line at the Focus
+  Zone *before* the change, as the DOM element rather than an ordinal (React reuses the node, the
+  block list being unchanged), and a `useLayoutEffect` keyed on `settings.textScale` — the exact
+  thing that changed, where `preset.fontSize` is rounded and also moves on rotation — puts it
+  back. `remeasure()` (exposed by `useSmoothFollow`) has to run FIRST: the content is a different
+  height and `setPosition` clamps against it, while the `ResizeObserver` has not fired yet at
+  layout time. It is a snap, not a `glideTo`: the reflow is instantaneous, so an eased move shows
+  the text sliding after the new size has already landed, and `setTargetPosition` goes with it for
+  the usual reason. The trap here is the preference rule: while Smart Follow is **listening** its
+  word is the better target (it is what follow mode damps toward), but `getIndex()` starts at 0
+  and stays there until the first match — and 0 is a perfectly valid-looking word index, so there
+  is no null for a fallback to key on. Measured, preferring it unconditionally sent the presenter
+  back to the top of the script on any resize before Play. `lineElementAtAnchor` is a *sibling* of
+  `wordIndexAtAnchor`, not a refactor of it: every path in that one ends at `firstWordIndexIn`,
+  which needs `[data-w]` spans, and those exist only while Smart Follow is on.
+  `verify-text-size.mjs` pins the whole thing, at two widths.
 - **The editor's marker insert needs its trailing empty line — do not tidy it away.** Measured:
   inserting the bare `SECTION_HTML` leaves the `contenteditable="false"` chip as the last node in
   the document, the caret has nowhere to go, and every keystroke after it is swallowed. Its cost is
@@ -280,6 +320,7 @@ node scripts/verify-models.mjs  # guards that dist/ actually contains the Vosk m
 node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fake capture device)
 node scripts/verify-paste.mjs   # a PDF paste lands as the paragraphs the PDF actually had
 node scripts/verify-preset-size.mjs # presets fill the screen; lineHeightPx matches what renders
+node scripts/verify-text-size.mjs # A-/A+ resize the script without moving the presenter off their line
 node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the script (no mic needed)
 node scripts/verify-tap-controls.mjs # a tap on Play plays, and leaves the chrome up (touch input)
 node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot

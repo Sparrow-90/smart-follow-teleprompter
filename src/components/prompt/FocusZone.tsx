@@ -24,10 +24,11 @@ interface FocusZoneProps {
 export function FocusZone({ readingMarker, lineHeightPx }: FocusZoneProps) {
   // The clear band ends a fixed number of LINES below the anchor, not a fixed percentage of the
   // screen. That distinction is the whole point: a line pitch is a different share of the viewport
-  // at every preset — measured at 1039x732 it is 8.6% at Close but 17.8% at Distance — so a stop
-  // at a fixed 82% erased 22% of the next line at Close and 67% of it at Distance. The presenter
-  // finished a line and the next one was grey. Expressed in pitches, every preset keeps the same
-  // number of readable lines below the anchor, which is what the gradient was always trying to say.
+  // at every size — measured at 1039x732 it is 8.6% at the smallest manual size but 17.8% at
+  // Distance — so a stop at a fixed 82% erased 22% of the next line at the small end and 67% of it
+  // at Distance. The presenter finished a line and the next one was grey. Expressed in pitches,
+  // every size keeps the same number of readable lines below the anchor, which is what the
+  // gradient was always trying to say.
   //
   // calc() mixes % and px inside a gradient stop, so the browser resolves this against the
   // element's real height and nothing here needs measuring or re-rendering on resize.

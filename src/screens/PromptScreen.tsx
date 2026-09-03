@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { PRESETS, resolvePreset } from '../model/presets'
 import { useSmoothFollow } from '../engine/useSmoothFollow'
@@ -9,9 +9,11 @@ import { PromptControls } from '../components/prompt/PromptControls'
 import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
 import type { VoskErrorKind } from '../smartfollow/useVosk'
+import { TEXT_SCALE_STEP, clampTextScale, TEXT_SCALE_MIN, TEXT_SCALE_MAX } from '../model/settings'
 import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
 import {
   wordIndexAtAnchor,
+  lineElementAtAnchor,
   firstWordIndexIn,
   wordProgressTarget,
   scrollTargetForLine,
@@ -58,6 +60,7 @@ function useViewportSize() {
 export function PromptScreen() {
   const scriptDoc = useStore((s) => s.scriptDoc)
   const settings = useStore((s) => s.settings)
+  const updateSettings = useStore((s) => s.updateSettings)
   const goTo = useStore((s) => s.goTo)
   const viewport = useViewportSize()
   // Sizes are authored for one tablet and fitted to this screen. Everything below reads THIS
@@ -65,8 +68,8 @@ export function PromptScreen() {
   // aims a line with. Deriving any of them from the unscaled preset would put the follow target
   // on a different line than the one on screen.
   const preset = useMemo(
-    () => resolvePreset(PRESETS[settings.preset], viewport.width, viewport.height),
-    [settings.preset, viewport.width, viewport.height],
+    () => resolvePreset(PRESETS[settings.preset], viewport.width, viewport.height, settings.textScale),
+    [settings.preset, settings.textScale, viewport.width, viewport.height],
   )
   const lineHeightPx = preset.fontSize * preset.lineHeight
   // Where "Klik akapit" can put the presenter. Derived from the document, so it costs nothing
@@ -77,7 +80,7 @@ export function PromptScreen() {
   const [controlsVisible, setControlsVisible] = useState(true)
   const [speed, setSpeed] = useState(1)
 
-  const { engine, contentRef, viewportRef } = useSmoothFollow({
+  const { engine, contentRef, viewportRef, remeasure } = useSmoothFollow({
     baseSpeed: preset.baseSpeed,
     onEnd: () => {
       setPlaying(false)
@@ -452,6 +455,90 @@ export function PromptScreen() {
   }
 
   /**
+   * Manual text size, set live from Prompt Mode.
+   *
+   * Size is the one setting that cannot be decided at a desk: how large the text needs to be is a
+   * fact about the room the presenter is standing in. So the two presets are starting points and
+   * this is the dial, and it is here rather than in Setup because the only useful place to judge
+   * it is looking at the real script from where you will actually be.
+   *
+   * The awkward part is that changing it REFLOWS the script, and the engine's position is in
+   * pixels — the same number means a different place in the text afterwards. So the line the
+   * presenter is reading is captured first, as a DOM element rather than an ordinal (React reuses
+   * the node, since the block list has not changed), and the layout effect below puts it back.
+   */
+  const resizeAnchorRef = useRef<Element | null>(null)
+  const changeTextScale = (delta: number) => {
+    // Rounded to whole percent: the step is not representable in binary, so four presses down
+    // land on 0.68000000000000005 and the floor — the size the retired Close preset gave — is
+    // never quite reached, leaving the button live with nothing left to do.
+    const next = clampTextScale(Math.round((settings.textScale + delta) * 100) / 100)
+    if (next === settings.textScale) return
+    resizeAnchorRef.current = lineElementAtAnchor(viewportRef.current, undefined, lineHeightPx)
+    // A nudge still settling would re-anchor to the destination ITS glide was heading for, a frame
+    // or two after this has placed the text — the same guard jumpToWordIndex documents.
+    cancelAnimationFrame(settleRafRef.current)
+    nudgeDestRef.current = null
+    updateSettings({ textScale: next })
+    setControlsVisible(true)
+    scheduleHide(engine.playing)
+  }
+
+  /**
+   * Put the presenter back on the line they were reading, once the new size has laid out.
+   *
+   * Keyed on the setting rather than on `preset.fontSize`: the setting is what actually changed
+   * and is exact, while the font size is rounded and also moves on rotation. It runs on mount too,
+   * finds no captured line, and does nothing — which is right, since nothing has reflowed.
+   */
+  useLayoutEffect(() => {
+    const line = resizeAnchorRef.current
+    resizeAnchorRef.current = null
+    const vp = viewportRef.current
+    if (!line || !vp) return
+    // First, because the reflow changed the content height and setPosition clamps against it.
+    // The ResizeObserver inside useSmoothFollow has not fired yet at layout time.
+    remeasure()
+    // While Smart Follow is LISTENING, its word is the better target: it is where the presenter's
+    // voice is, and it is what follow mode damps toward — place anything else and the engine pulls
+    // straight off it again. While it is not, that index is not evidence of anything. It starts at
+    // 0 and stays there until the first match, and 0 is a perfectly valid-looking word index, so
+    // there is no null for a fallback to key on: measured, a resize before Play sent the presenter
+    // back to the top of the script from wherever they had scrolled to.
+    const index = usingSFRef.current && sfRef.current.listening ? sfRef.current.getIndex() : null
+    const fromWord =
+      index == null
+        ? null
+        : wordProgressTarget(
+            engine.position,
+            vp.querySelector(`[data-w="${index}"]`),
+            vp.querySelector('[data-prompter-column]'),
+            vp,
+            lineHeightPx,
+            settings.mirror,
+          )
+    const vpRect = vp.getBoundingClientRect()
+    const dest =
+      fromWord ??
+      scrollTargetForLine(engine.position, line.getBoundingClientRect().top, vpRect.top, vpRect.height)
+    // A snap, not a glide: the reflow is instantaneous, so an eased move would show the text
+    // sliding AFTER the new size has already landed. setTargetPosition for the usual reason —
+    // without it follow mode damps back to the target it held before the resize.
+    engine.setPosition(dest)
+    engine.setTargetPosition(dest)
+    // Placed by the line rather than by the matcher, so tell the matcher where that leaves it —
+    // this also stands in for the nudge settle cancelled above, which would have done the same.
+    // Read off the captured line rather than the DOM: the line IS at the anchor by construction
+    // now, whereas the transform carrying it there is not written until the next frame.
+    if (fromWord == null && usingSFRef.current) {
+      const atAnchor = firstWordIndexIn(line)
+      if (atAnchor != null) sfRef.current.reanchorTo(atAnchor)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on a size change only; the
+    // rest are refs and stable identities read at that moment.
+  }, [settings.textScale])
+
+  /**
    * A spoken command. "Up" moves the reading position back up the script — the same call as the
    * onNudgeBack button, so voice and touch land on one code path. The sign is intentional.
    *
@@ -732,6 +819,11 @@ export function PromptScreen() {
         onFaster={() => changeSpeed(SPEED_STEP)}
         onNudgeBack={() => nudgeLines(-1)}
         onNudgeForward={() => nudgeLines(1)}
+        textScale={settings.textScale}
+        onTextSmaller={() => changeTextScale(-TEXT_SCALE_STEP)}
+        onTextLarger={() => changeTextScale(TEXT_SCALE_STEP)}
+        canShrink={settings.textScale > TEXT_SCALE_MIN}
+        canGrow={settings.textScale < TEXT_SCALE_MAX}
       />
     </div>
   )

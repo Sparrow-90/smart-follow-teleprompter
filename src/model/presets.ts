@@ -18,16 +18,13 @@ export interface PresetStyle {
  * resolvePreset. Font and column are raised together on purpose: widening a column on its own
  * just makes the eye travel further across the line, which is worse at a distance, not better.
  * Larger presets scroll a little faster in px/sec so reading *pace* stays similar.
+ *
+ * Two presets, not three: these are starting points now, and the presenter tunes the size from
+ * there in Prompt Mode. `close` was dropped because it only ever meant "smaller", and how much
+ * smaller is a fact about the room, not about the app — see TEXT_SCALE_MIN in settings.ts, which
+ * is the exact font Close used to give.
  */
 export const PRESETS: Record<Preset, PresetStyle> = {
-  close: {
-    label: 'Close',
-    helper: 'Device close — smaller text, narrow column.',
-    fontSize: 34,
-    lineHeight: 1.4,
-    columnWidth: 780,
-    baseSpeed: 45,
-  },
   standard: {
     label: 'Standard',
     helper: 'The default for most setups.',
@@ -48,7 +45,7 @@ export const PRESETS: Record<Preset, PresetStyle> = {
   },
 }
 
-export const PRESET_ORDER: Preset[] = ['close', 'standard', 'distance']
+export const PRESET_ORDER: Preset[] = ['standard', 'distance']
 
 /** The tablet the sizes above are written for: an iPad in landscape. */
 export const REFERENCE_VIEWPORT = { width: 1194, height: 834 }
@@ -58,6 +55,27 @@ const MIN_SCALE = 0.7
 const MAX_SCALE = 1.75
 
 const clampScale = (n: number) => Math.min(Math.max(n, MIN_SCALE), MAX_SCALE)
+
+/**
+ * The presenter's own size adjustment, applied to an authored (or already fitted) preset.
+ *
+ * Font, column and speed move together, for the same reasons the three authored presets do:
+ * scaling type alone changes how many words land on a line, and scroll speed has to follow the
+ * text or the same px/sec reads as a different pace.
+ *
+ * One honest limit: columnWidth is a `max-width`, so once it passes the width of the screen the
+ * column cannot grow any further and additional growth IS text-only. On a reference tablet that
+ * is around 1.15 at Distance, whose column already asks for 96% of the screen. Shrinking is never
+ * affected — "words per line holds" is a claim about the useful range, not a law.
+ */
+export function applyTextScale(style: PresetStyle, textScale: number): PresetStyle {
+  return {
+    ...style,
+    fontSize: Math.round(style.fontSize * textScale),
+    columnWidth: Math.round(style.columnWidth * textScale),
+    baseSpeed: style.baseSpeed * textScale,
+  }
+}
 
 /**
  * Fit an authored preset to the screen actually in front of the presenter.
@@ -71,20 +89,36 @@ const clampScale = (n: number) => Math.min(Math.max(n, MIN_SCALE), MAX_SCALE)
  *   tighter axis too left a quarter of a wide screen as empty margin, which is the complaint
  *   this scaling exists to answer.
  *
+ * The presenter's own `textScale` is folded in here too, at the end, so the returned object is
+ * the single place every size in Prompt Mode comes from.
+ *
  * The result must be the ONLY source of size in Prompt Mode. PromptScreen derives lineHeightPx
  * from it as well as rendering from it, because Smart Follow aims at a line using that number —
  * if the rendered text scaled and lineHeightPx did not, the follow would target the wrong line.
+ * That is also why textScale must never be applied in PromptText: FocusZone's clear band and
+ * nudgeLines' step are both measured in lineHeightPx, so a size the renderer knows about and this
+ * object does not puts all three on a different line than the presenter.
  */
-export function resolvePreset(style: PresetStyle, viewportWidth: number, viewportHeight: number): PresetStyle {
-  if (viewportWidth <= 0 || viewportHeight <= 0) return style
+export function resolvePreset(
+  style: PresetStyle,
+  viewportWidth: number,
+  viewportHeight: number,
+  textScale = 1,
+): PresetStyle {
+  if (viewportWidth <= 0 || viewportHeight <= 0) return applyTextScale(style, textScale)
   const widthRatio = viewportWidth / REFERENCE_VIEWPORT.width
-  const textScale = clampScale(Math.min(widthRatio, viewportHeight / REFERENCE_VIEWPORT.height))
+  const fitScale = clampScale(Math.min(widthRatio, viewportHeight / REFERENCE_VIEWPORT.height))
   const columnScale = clampScale(widthRatio)
-  if (textScale === 1 && columnScale === 1) return style
-  return {
-    ...style,
-    fontSize: Math.round(style.fontSize * textScale),
-    columnWidth: Math.round(style.columnWidth * columnScale),
-    baseSpeed: style.baseSpeed * textScale,
-  }
+  if (fitScale === 1 && columnScale === 1) return applyTextScale(style, textScale)
+  return applyTextScale(
+    {
+      ...style,
+      fontSize: style.fontSize * fitScale,
+      columnWidth: style.columnWidth * columnScale,
+      baseSpeed: style.baseSpeed * fitScale,
+    },
+    // Rounded once, at the end: rounding the fitted size and then the scaled one lets the two
+    // roundings compound, and fontSize is what lineHeightPx is derived from.
+    textScale,
+  )
 }

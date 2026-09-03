@@ -15,6 +15,13 @@ interface PromptControlsProps {
   onNudgeBack: () => void
   /** Move the script exactly one rendered line on toward the end. */
   onNudgeForward: () => void
+  /** The presenter's manual size, 1 = the preset as authored. Shown as a percentage. */
+  textScale: number
+  onTextSmaller: () => void
+  onTextLarger: () => void
+  /** False at the ends of the range, so a press with nothing left to give reads as spent. */
+  canShrink: boolean
+  canGrow: boolean
 }
 
 /** Held-button repeat: long enough that a normal press is unmistakably one line. */
@@ -72,7 +79,8 @@ function HoldButton({
 const iconBtn =
   'flex items-center justify-center rounded-full bg-surface/90 text-fg backdrop-blur ' +
   'transition-opacity hover:opacity-80 active:opacity-70 ' +
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ' +
+  'disabled:opacity-40 disabled:hover:opacity-40'
 
 /** Floating bottom-centre control cluster: slower / play-pause / faster. Auto-hides. */
 export function PromptControls({
@@ -86,6 +94,11 @@ export function PromptControls({
   onFaster,
   onNudgeBack,
   onNudgeForward,
+  textScale,
+  onTextSmaller,
+  onTextLarger,
+  canShrink,
+  canGrow,
 }: PromptControlsProps) {
   return (
     <div
@@ -173,12 +186,41 @@ export function PromptControls({
             </svg>
           </HoldButton>
         </div>
-      </div>
-      {showSpeed && (
-        <div className="mt-3 text-center text-xs tracking-wide text-fg-muted tabular-nums">
-          {speedMultiplier.toFixed(1)}×
+
+        {/*
+          Text size. Shown in BOTH modes, unlike the speed controls — Smart Follow decides the
+          pace, but nothing decides how large the text has to be except the room, so this is the
+          presenter's call either way. Plain buttons rather than HoldButtons: a held resize would
+          run past the size that was wanted, and there are only ten steps in the whole range.
+        */}
+        <div className="ml-1 flex flex-col gap-1.5">
+          <button
+            className={cn(iconBtn, 'h-9 w-12 text-[13px] font-semibold')}
+            onClick={onTextLarger}
+            disabled={!canGrow}
+            aria-label="Larger text"
+            title="Larger text"
+          >
+            A+
+          </button>
+          <button
+            className={cn(iconBtn, 'h-9 w-12 text-[11px] font-semibold')}
+            onClick={onTextSmaller}
+            disabled={!canShrink}
+            aria-label="Smaller text"
+            title="Smaller text"
+          >
+            A−
+          </button>
         </div>
-      )}
+      </div>
+      {/* Size is always readable, speed only where there is one — the row itself is always
+          rendered so the cluster does not change height when Smart Follow is switched on. */}
+      <div className="mt-3 text-center text-xs tracking-wide text-fg-muted tabular-nums">
+        {showSpeed && <span>{speedMultiplier.toFixed(1)}×</span>}
+        {showSpeed && <span className="px-2 opacity-50">·</span>}
+        <span data-text-scale>{Math.round(textScale * 100)}%</span>
+      </div>
     </div>
   )
 }

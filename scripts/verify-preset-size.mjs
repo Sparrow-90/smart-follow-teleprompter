@@ -51,6 +51,19 @@ for (const screen of SCREENS) {
     }
   })
 
+  // The same two measurements again at a manual size, because the check below is only ever as
+  // good as the scale it runs at: a manual scale that reached the renderer without reaching the
+  // resolved preset would leave lineHeightPx describing a line nobody is reading, and at 100% the
+  // two agree whether or not that is true.
+  const smaller = page.getByRole('button', { name: 'Smaller text' })
+  await smaller.click()
+  await sleep(400)
+  const scaled = await page.evaluate(() => {
+    const text = document.querySelector('[data-prompter-text]')
+    const cs = getComputedStyle(text)
+    return { fontSize: parseFloat(cs.fontSize), renderedLineHeight: parseFloat(cs.lineHeight) }
+  })
+
   const share = m.columnWidth / screen.width
   // PromptScreen computes lineHeightPx as fontSize × lineHeight; the browser resolves the same
   // multiplication for `line-height`. They must agree, or Smart Follow aims at the wrong line.
@@ -61,7 +74,16 @@ for (const screen of SCREENS) {
   console.log(`  column             : ${Math.round(m.columnWidth)}px  (${Math.round(share * 100)}% of screen)`)
   console.log(`  line height        : ${m.renderedLineHeight}px  ${lineHeightAgrees ? '= fontSize × 1.5 ✓' : '✗ DRIFTED'}`)
 
+  const scaledAgrees =
+    scaled.fontSize < m.fontSize &&
+    Math.abs(scaled.renderedLineHeight - scaled.fontSize * 1.5) < 1
+  console.log(
+    `  at a manual size   : ${scaled.fontSize}px, line height ${scaled.renderedLineHeight}px  ` +
+      `${scaledAgrees ? '✓' : '✗ DRIFTED'}`,
+  )
+
   if (!lineHeightAgrees) { console.log('  ✗ Smart Follow would aim at the wrong line'); failed = true }
+  if (!scaledAgrees) { console.log('  ✗ the manual size did not reach the resolved preset'); failed = true }
   if (share < 0.85) { console.log(`  ✗ column uses only ${Math.round(share * 100)}% of the screen`); failed = true }
   await page.context().close()
 }

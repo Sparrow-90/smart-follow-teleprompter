@@ -1,6 +1,6 @@
 import { get, set } from 'idb-keyval'
 import type { ScriptDoc } from '../model/document'
-import { type Settings, defaultSettings } from '../model/settings'
+import { type Settings, defaultSettings, migrateSettings } from '../model/settings'
 
 // The script (potentially large) lives in IndexedDB; small preferences in localStorage.
 const SCRIPT_KEY = 'prompter:script'
@@ -26,7 +26,9 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (!raw) return { ...defaultSettings }
-    return { ...defaultSettings, ...(JSON.parse(raw) as Partial<Settings>) }
+    // migrateSettings, not a blind merge: what is on disk was written by an older build and may
+    // name a preset this one no longer has. See its comment — that case renders nothing at all.
+    return migrateSettings(JSON.parse(raw))
   } catch {
     return { ...defaultSettings }
   }
