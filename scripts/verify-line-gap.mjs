@@ -28,9 +28,9 @@ const check = (ok, label, detail = '') => {
 
 /**
  * The clear band ends CLEAR_LINES_BELOW line pitches under the anchor — measured in pitches, not in
- * percent of the screen, because a pitch is a different share of the viewport at every preset (5.7%
- * at Close, 17.8% at Distance on a 732px-tall window). A fixed percentage there erased a quarter of
- * the next line at Close and two thirds of it at Distance.
+ * percent of the screen, because a pitch is a different share of the viewport at every size (5.7% at
+ * the smallest manual size, 17.8% at Distance on a 732px-tall window). A fixed percentage there
+ * erased a quarter of the next line at the small end and two thirds of it at Distance.
  *
  * The anchor is READ FROM SOURCE rather than repeated here. It is the number the whole Focus Zone
  * is built around — the follow target, the tap-to-jump geometry, the gradient's clear stop, the
@@ -103,13 +103,26 @@ const marker = async (p) => {
   await sleep(150)
 }
 
-// A small window in the largest preset is the tight case, but the box height is derived from the
-// preset's lineHeight, so Close (1.4, the smallest) is the one most likely to overflow its box.
-const PRESETS = ['Close', 'Standard', 'Distance']
+/**
+ * The box height is `lineHeight - 2 x 0.45em` — a RATIO, so which preset is tightest is decided by
+ * lineHeight alone. That used to be Close at 1.4; Close has been retired in favour of the manual
+ * size control, so the tightest available is now Standard's 1.45, and no manual size can beat it
+ * (the scale moves px, not the ratio).
+ *
+ * The third case is what the manual size does earn here: at the floor of the range every px number
+ * on the screen is different, so it pins that the gap, the advance and — the one that has silently
+ * regressed before — the gradient's clear stop all follow the SCALED pitch rather than a size
+ * baked in at the preset.
+ */
+const CASES = [
+  { preset: 'Standard' },
+  { preset: 'Distance' },
+  { preset: 'Standard', floorSize: true },
+]
 
 const browser = await chromium.launch()
 
-for (const preset of PRESETS) {
+for (const { preset, floorSize } of CASES) {
   for (const shape of SHAPES) {
     const ctx = await browser.newContext({ viewport: { width: 1039, height: 732 } })
     const p = await ctx.newPage()
@@ -127,6 +140,15 @@ for (const preset of PRESETS) {
     await sleep(300)
     await p.getByRole('button', { name: 'Start Prompt' }).click()
     await sleep(700)
+    if (floorSize) {
+      // Down to the floor of the manual range, which is where the button goes disabled.
+      const smaller = p.getByRole('button', { name: 'Smaller text' })
+      for (let i = 0; i < 12 && !(await smaller.isDisabled()); i++) {
+        await smaller.click()
+        await sleep(90)
+      }
+      check(await smaller.isDisabled(), `${preset} / smallest: the size reached its floor`)
+    }
 
     const m = await p.evaluate(() => {
       const text = document.querySelector('[data-prompter-text]')
@@ -184,7 +206,7 @@ for (const preset of PRESETS) {
       }
     })
 
-    const label = `${preset} / ${shape.name}`
+    const label = `${preset}${floorSize ? ' (smallest)' : ''} / ${shape.name}`
     if (!m) {
       check(false, `${label}: Prompt Mode rendered`)
       await ctx.close()

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { PRESETS, PRESET_ORDER, REFERENCE_VIEWPORT, resolvePreset, type PresetStyle } from './presets'
+import {
+  PRESETS,
+  PRESET_ORDER,
+  REFERENCE_VIEWPORT,
+  applyTextScale,
+  resolvePreset,
+  type PresetStyle,
+} from './presets'
+import { TEXT_SCALE_MIN } from './settings'
 
 /**
  * Preset sizes are authored against one reference tablet. A laptop or an external display is
@@ -82,5 +90,62 @@ describe('PRESETS', () => {
     expect(PRESETS.distance.columnWidth / REFERENCE_VIEWPORT.width).toBeGreaterThan(0.9)
     expect(PRESETS.distance.fontSize).toBeGreaterThanOrEqual(96)
     expect(PRESETS.distance.fontSize).toBeLessThanOrEqual(110)
+  })
+})
+
+/**
+ * The manual size the presenter sets in Prompt Mode. It rides on top of the viewport fit rather
+ * than replacing it, and it has to reach the resolved object — everything downstream (lineHeightPx,
+ * the Focus Zone's clear band, the nudge step) is derived from that one object and nothing else.
+ */
+describe('applyTextScale', () => {
+  it('moves the text, the column and the speed together', () => {
+    // Column included on purpose: shrinking type alone leaves the same wide column, and twelve
+    // words to a line is exactly what the authored presets narrow the column to avoid.
+    expect(applyTextScale(style, 0.5)).toMatchObject({
+      fontSize: 50,
+      columnWidth: 500,
+      baseSpeed: 25,
+    })
+  })
+
+  it('keeps line height a ratio, not a length', () => {
+    expect(applyTextScale(style, 0.5).lineHeight).toBe(1.5)
+  })
+
+  it('changes nothing at 1', () => {
+    expect(applyTextScale(style, 1)).toEqual(style)
+  })
+
+  it('lands the smallest size on the font the retired Close preset used', () => {
+    expect(applyTextScale(PRESETS.standard, TEXT_SCALE_MIN).fontSize).toBe(34)
+  })
+})
+
+describe('resolvePreset with a manual scale', () => {
+  it('is unchanged when no scale is asked for', () => {
+    expect(resolvePreset(style, W * 1.5, H * 1.5, 1)).toEqual(resolvePreset(style, W * 1.5, H * 1.5))
+  })
+
+  it('composes the manual scale with the viewport fit', () => {
+    // 1.5 from the screen, 0.5 from the presenter — the text ends up back where it started.
+    expect(resolvePreset(style, W * 1.5, H * 1.5, 0.5)).toMatchObject({
+      fontSize: 75,
+      columnWidth: 750,
+      baseSpeed: 37.5,
+    })
+  })
+
+  it('still applies the manual scale on a viewport that has not been measured yet', () => {
+    // The 0×0 early return used to hand back the authored style; it now has a second input to
+    // honour, and dropping it there would render the first frame at the wrong size.
+    expect(resolvePreset(style, 0, 0, 0.5).fontSize).toBe(50)
+  })
+
+  it('rounds the size once, not once per scale', () => {
+    // fontSize is what lineHeightPx is derived from, and Smart Follow aims a line with that
+    // number — two roundings compound into a pitch that no longer matches what renders.
+    const odd = { ...style, fontSize: 33 }
+    expect(resolvePreset(odd, W * 1.3, H * 1.3, 0.76).fontSize).toBe(Math.round(33 * 1.3 * 0.76))
   })
 })

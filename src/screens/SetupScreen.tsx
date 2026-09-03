@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useStore } from '../state/store'
 import { change, press, pressScale, travel } from '../motion/tokens'
-import { PRESETS, PRESET_ORDER } from '../model/presets'
+import { PRESETS, PRESET_ORDER, applyTextScale } from '../model/presets'
 import { LANGUAGE_LABELS, type Preset, type SttLanguage } from '../model/settings'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Toggle } from '../components/ui/Toggle'
@@ -12,7 +12,10 @@ export function SetupScreen() {
   const settings = useStore((s) => s.settings)
   const updateSettings = useStore((s) => s.updateSettings)
   const goTo = useStore((s) => s.goTo)
-  const preset = PRESETS[settings.preset]
+  // Carries the presenter's manual size, or the preview shows a size they are not going to get.
+  // Only the manual scale, not the viewport fit: the preview is its own shrunken thing and
+  // PREVIEW_SCALE is tuned against the authored numbers.
+  const preset = applyTextScale(PRESETS[settings.preset], settings.textScale)
 
   return (
     <div className="flex h-[100dvh] flex-col">
@@ -61,6 +64,12 @@ export function SetupScreen() {
                 </motion.p>
               </AnimatePresence>
             </div>
+            {/* Said here because there is nowhere else to say it: the size control lives in Prompt
+                Mode, where the presenter can see the real script from where they will stand, and a
+                control nobody knows about is a control nobody uses. */}
+            <p className="mt-1 text-xs text-fg-muted">
+              Fine-tune the text size while prompting, with the A− / A+ buttons.
+            </p>
           </div>
 
           <div className="divide-y divide-border border-y border-border">
@@ -127,7 +136,11 @@ export function SetupScreen() {
           <div className="min-h-56 sm:min-h-72">
             <SetupPreview
               preset={preset}
-              presetLabel={preset.label}
+              presetLabel={
+                settings.textScale === 1
+                  ? preset.label
+                  : `${preset.label} ${Math.round(settings.textScale * 100)}%`
+              }
               mirror={settings.mirror}
               readingMarker={settings.readingMarker}
             />

@@ -141,12 +141,13 @@ console.log('\n1. Editor → Setup push')
   // ── 2. The segmented pill travels ──────────────────────────────────────────────────────
   console.log('\n2. Segmented pill')
   const pillBox = () => page.locator('[data-pill]').boundingBox()
-  const closeBox = await page.getByRole('radio', { name: 'Close' }).boundingBox()
+  // Two segments now — Close was retired in favour of the manual size control in Prompt Mode.
+  const standardBox = await page.getByRole('radio', { name: 'Standard' }).boundingBox()
   const distanceBox = await page.getByRole('radio', { name: 'Distance' }).boundingBox()
 
   const before = await pillBox()
   check(
-    Math.abs(before.x - (await page.getByRole('radio', { name: 'Standard' }).boundingBox()).x) < 2,
+    Math.abs(before.x - standardBox.x) < 2,
     'the pill starts on the selected segment (Standard)',
   )
 
@@ -163,7 +164,7 @@ console.log('\n1. Editor → Setup push')
   await sleep(600)
   const after = await pillBox()
   check(Math.abs(after.x - distanceBox.x) < 2, 'the pill lands exactly on the new segment')
-  check(closeBox.x < distanceBox.x, 'sanity: segments are laid out left→right')
+  check(standardBox.x < distanceBox.x, 'sanity: segments are laid out left→right')
 
   // ── 3. The Language row collapses ──────────────────────────────────────────────────────
   console.log('\n3. Language row')

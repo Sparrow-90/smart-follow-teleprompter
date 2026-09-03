@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { SmoothFollowEngine } from './SmoothFollowEngine'
 
 interface UseSmoothFollowConfig {
@@ -28,21 +28,28 @@ export function useSmoothFollow({ baseSpeed, onEnd }: UseSmoothFollowConfig) {
     engine.setBaseSpeed(baseSpeed)
   }, [engine, baseSpeed])
 
+  /**
+   * Re-read the content and viewport heights. The ResizeObserver below does this on its own, but
+   * it fires asynchronously — a caller that reflows the text and then wants to place the scroll
+   * position in the same frame has to force it, or setPosition clamps against the height the
+   * content had before the reflow.
+   */
+  const remeasure = useCallback(() => {
+    const content = contentRef.current
+    const viewport = viewportRef.current
+    if (content && viewport) {
+      engine.setContentMetrics(content.scrollHeight, viewport.clientHeight)
+    }
+  }, [engine])
+
   useEffect(() => {
     let raf = 0
     let last = performance.now()
     let endedFired = false
 
-    const measure = () => {
-      const content = contentRef.current
-      const viewport = viewportRef.current
-      if (content && viewport) {
-        engine.setContentMetrics(content.scrollHeight, viewport.clientHeight)
-      }
-    }
-    measure()
+    remeasure()
 
-    const ro = new ResizeObserver(measure)
+    const ro = new ResizeObserver(remeasure)
     if (contentRef.current) ro.observe(contentRef.current)
     if (viewportRef.current) ro.observe(viewportRef.current)
 
@@ -74,7 +81,7 @@ export function useSmoothFollow({ baseSpeed, onEnd }: UseSmoothFollowConfig) {
       cancelAnimationFrame(raf)
       ro.disconnect()
     }
-  }, [engine])
+  }, [engine, remeasure])
 
-  return { engine, contentRef, viewportRef }
+  return { engine, contentRef, viewportRef, remeasure }
 }
