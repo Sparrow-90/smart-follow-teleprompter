@@ -9,11 +9,30 @@
  * It also covers the trap tap-to-jump documents — follow mode smooth-damping back to its stale
  * pre-move target the instant the glide ends.
  *
+ * And it pins WHEN Smart Follow is told. A nudge is a recovery tool, so the presenter is
+ * re-reading within the second: `reanchorTo` is what empties the recognition window, and the
+ * words still in it were spoken ahead of the line just chosen, so they out-vote the re-anchor on
+ * the next partial. The re-anchor used to wait for `isGliding()` to clear, which is not when the
+ * motion stops looking finished but when it comes within half a pixel of its target — measured,
+ * 1.7s for one line and 2.3s for four. The destination is known at the press, so the wait was
+ * never necessary.
+ *
  * Needs `npm run dev` (override the port with PORT=…).
  */
+import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const URL = `http://localhost:${process.env.PORT ?? '5173'}`
+// Read from source, not retyped. verify-line-gap.mjs greps `src/` for the idiom `0.4 * ...height`
+// to stop the anchor drifting; a copy here would be one more place for it to, and one it cannot
+// see. This file used to hold two — the fraction AND the viewport height it was multiplied by.
+const FOCUS_ANCHOR = Number(
+  readFileSync('src/smartfollow/positionMap.ts', 'utf8').match(
+    /export const FOCUS_ANCHOR = ([\d.]+)/,
+  )?.[1],
+)
+/** How long after the text starts moving the matcher may still be ignorant of it. */
+const REANCHOR_BUDGET_MS = 150
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const results = []
 const check = (name, ok, detail) => {
@@ -97,14 +116,99 @@ check('back one line returns exactly one line', Math.abs(afterBack - (afterThree
   `${afterThree.toFixed(0)} -> ${afterBack.toFixed(0)}`)
 
 // Smart Follow must know where the presenter now is, or the next spoken word drags the text back.
-const anchored = await p.evaluate(() => {
+const anchored = await p.evaluate((anchor) => {
   const i = window.__prompter.index()
   const r = document.querySelector(`[data-w="${i}"]`)?.getBoundingClientRect()
-  return { i, top: r ? r.top : null }
-})
+  const vp = document.querySelector('[data-prompter-text]').parentElement.getBoundingClientRect()
+  return { i, top: r ? r.top : null, anchorY: vp.top + anchor * vp.height }
+}, FOCUS_ANCHOR)
 check('Smart Follow re-anchored to a word near the Focus Zone',
-  anchored.top != null && Math.abs(anchored.top - 0.4 * 834) < 2 * lineHeight,
-  `word #${anchored.i} at ${anchored.top == null ? '?' : Math.round(anchored.top)}px (anchor ~334px)`)
+  anchored.top != null && Math.abs(anchored.top - anchored.anchorY) < 2 * lineHeight,
+  `word #${anchored.i} at ${anchored.top == null ? '?' : Math.round(anchored.top)}px (anchor ${Math.round(anchored.anchorY)}px)`)
+
+/**
+ * The word actually under the reading anchor, measured off the settled DOM.
+ *
+ * Deliberately the same resolution rule the app uses — the anchor point, then half a pitch either
+ * side. Lines carry 0.45em margins, so the anchor landing in the gap between two of them is
+ * routine and a single point there finds nothing at all. Using one rule on both sides is the
+ * point of the check, not a weakening of it: the app computes this BEFORE the move from a shifted
+ * anchor, and this reads it AFTER, off where the text really came to rest.
+ */
+const wordOnScreen = () =>
+  p.evaluate(
+    ({ anchor, pitch }) => {
+      const vp = document.querySelector('[data-prompter-text]').parentElement
+      const r = vp.getBoundingClientRect()
+      const x = r.left + r.width / 2
+      const y = r.top + anchor * r.height
+      for (const dy of [0, -pitch / 2, pitch / 2]) {
+        const hit = document.elementFromPoint(x, y + dy)
+        const w =
+          hit?.closest('[data-w]') ?? hit?.closest('[data-prompter-line]')?.querySelector('[data-w]')
+        if (w) return Number(w.getAttribute('data-w'))
+      }
+      return null
+    },
+    { anchor: FOCUS_ANCHOR, pitch: lineHeight },
+  )
+
+/**
+ * Press, and watch from INSIDE the page so the measurement excludes Playwright's click
+ * round-trip: the clock starts when the text actually begins to move, not when we asked it to.
+ */
+const nudgeAndWatch = async (button, presses) => {
+  const startIndex = await p.evaluate(() => window.__prompter.index())
+  const startPos = await pos()
+  const watcher = p.evaluate(
+    ({ startIndex, startPos, budget }) =>
+      new Promise((resolve) => {
+        const t0 = performance.now()
+        let movedAt = null
+        const tick = () => {
+          const now = performance.now()
+          if (movedAt == null && Math.abs(window.__prompter.position() - startPos) > 0.5) movedAt = now
+          if (window.__prompter.index() !== startIndex) {
+            return resolve({
+              // Still easing toward the destination when the matcher was told: the whole claim.
+              stillMoving: window.__prompter.gliding(),
+              afterMove: movedAt == null ? null : now - movedAt,
+            })
+          }
+          if (now - t0 > 6000 + budget) return resolve(null)
+          requestAnimationFrame(tick)
+        }
+        tick()
+      }),
+    { startIndex, startPos, budget: REANCHOR_BUDGET_MS },
+  )
+  for (let i = 0; i < presses; i++) { await button.click(); await sleep(55) }
+  const r = await watcher
+  await settle()
+  // Follow mode does not glide — it damps at up to 320px/s — and the glide's own tail is
+  // exponential, so let both come to rest before reading where the text ended up.
+  await sleep(400)
+  return { startIndex, ...(r ?? {}) }
+}
+
+for (const [label, button, presses] of [
+  ['one press', forward, 1],
+  ['four stacked presses', back, 4],
+]) {
+  const r = await nudgeAndWatch(button, presses)
+  const [index, onScreen] = [await p.evaluate(() => window.__prompter.index()), await wordOnScreen()]
+  check(`${label}: Smart Follow is told while the text is STILL TRAVELLING`,
+    r.stillMoving === true,
+    r.stillMoving === true ? '' : 'the re-anchor waited for the motion to finish')
+  check(`${label}: within ${REANCHOR_BUDGET_MS}ms of the text starting to move`,
+    r.afterMove != null && r.afterMove <= REANCHOR_BUDGET_MS,
+    `${r.afterMove == null ? '?' : Math.round(r.afterMove)}ms`)
+  // Fast is worthless if it is wrong. Read after settling: a stack re-anchors once per press, so
+  // the first answer is where the first press was heading, not where the text ends up.
+  check(`${label}: and told the RIGHT word — the one the move lands on`,
+    onScreen != null && index === onScreen,
+    `matcher ${index}, word under the anchor ${onScreen}`)
+}
 
 // Nudging back at the very top must not run the count off past the start.
 for (let i = 0; i < 8; i++) { await back.click(); await sleep(120) }

@@ -178,6 +178,25 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   passes every other check at Standard and silently greys the next line out at Distance.
   Note this made `ScriptToken.lineIndex` stop matching the Nth `[data-prompter-line]` (blank lines
   no longer render as lines); nothing in the follow path used it, and the comment there now says so.
+- **A nudge tells Smart Follow where the presenter went WHILE the text is still moving.** It used
+  to wait for `engine.isGliding()` to clear, on the reasoning that reading the DOM any earlier
+  hands back the word the presenter was on *before* the nudge — true of the anchor as it stands,
+  but the destination is known at the press, so the anchor as it WILL be is known too: the content
+  moves up by `dest - position`, so whatever sits that far below the anchor now is what ends up on
+  it. That is just `wordIndexAtAnchor` with a shifted anchor fraction, and it agrees with the
+  settled measurement exactly — checked at two viewports, forward and back, one to eight lines.
+  The wait was not small: `isGliding()` clears when the easing comes within half a pixel of its
+  target, not when the motion stops looking finished — `tau x ln(2 x distance)` at `tau = 0.35s`,
+  measured at **1.7s** for one line and **2.3s** for four, against about a second of visible
+  travel. A nudge is a recovery tool, so the presenter is re-reading inside that window, and
+  `reanchorTo` is what empties the recognition window — the words still in it were spoken ahead of
+  the line just chosen and out-vote the re-anchor on the next partial. Removing the wait removed
+  the rAF settle loop *and* `nudgeDestRef`: stacking held presses is what `engine.destination`
+  already means (`glideTarget` while gliding, else `position`), and unlike the ref it clears
+  itself — until it did, a drag inside that window left the next press stacking onto a destination
+  nobody was heading for. `verify-nudge.mjs` pins that the re-anchor lands while the text is still
+  travelling AND on the right word, which is the pair that matters: either alone passes for the
+  wrong reason.
 - **Changing the text size REFLOWS the script, and the engine's position is in pixels** — so the
   same number means a different place in the text afterwards, and a size change without a
   re-anchor throws the presenter somewhere else. `PromptScreen` captures the line at the Focus
@@ -321,6 +340,7 @@ node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fak
 node scripts/verify-paste.mjs   # a PDF paste lands as the paragraphs the PDF actually had
 node scripts/verify-preset-size.mjs # presets fill the screen; lineHeightPx matches what renders
 node scripts/verify-text-size.mjs # A-/A+ resize the script without moving the presenter off their line
+node scripts/verify-nudge.mjs # one press = exactly one line, and Smart Follow is told at once
 node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the script (no mic needed)
 node scripts/verify-tap-controls.mjs # a tap on Play plays, and leaves the chrome up (touch input)
 node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" where open speech cannot
