@@ -12,6 +12,7 @@ import type { VoskErrorKind } from '../smartfollow/useVosk'
 import { TEXT_SCALE_STEP, clampTextScale, TEXT_SCALE_MIN, TEXT_SCALE_MAX } from '../model/settings'
 import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
 import {
+  FOCUS_ANCHOR,
   wordIndexAtAnchor,
   lineElementAtAnchor,
   firstWordIndexIn,
@@ -382,46 +383,56 @@ export function PromptScreen() {
    * counterpart to tap-to-jump, which recentres whatever line you hit and so travels further the
    * lower on screen you tap.
    *
-   * Holding the button stacks moves onto the last destination rather than the live position: the
+   * Holding the button stacks moves onto where the text is GOING rather than where it is: the
    * glide is still travelling, so counting from `engine.position` would lose whatever the
-   * previous press had not yet covered. glideTo hands back the clamped destination, so pressing
-   * on at the end of the script cannot run the count off past it.
+   * previous press had not yet covered. That is exactly what `engine.destination` means, and it
+   * clears itself when the glide lands — a ref mirroring it had to be cleared by hand, and until
+   * it was, a drag in between left the next press stacking onto a destination nobody was heading
+   * for any more. glideTo hands back the clamped destination, so pressing on at the end of the
+   * script cannot run the count off past it.
    */
-  const nudgeDestRef = useRef<number | null>(null)
-  const settleRafRef = useRef(0)
   const nudgeLines = (lines: number) => {
-    const from = nudgeDestRef.current ?? engine.position
-    const dest = engine.glideTo(from + lines * lineHeightPx)
-    nudgeDestRef.current = dest
+    const dest = engine.glideTo(engine.destination + lines * lineHeightPx)
     // Follow mode smooth-damps toward targetPosition; without this it pulls straight back to the
     // pre-nudge target, exactly as tap-to-jump documents above.
     engine.setTargetPosition(dest)
     setControlsVisible(true)
     scheduleHide(engine.playing)
 
-    // Re-anchor only once the text has actually stopped. The glide is animated, so reading the
-    // DOM now would hand Smart Follow the word the presenter was on *before* the nudge.
-    cancelAnimationFrame(settleRafRef.current)
-    const whenSettled = () => {
-      if (engine.isGliding()) {
-        settleRafRef.current = requestAnimationFrame(whenSettled)
-        return
-      }
-      nudgeDestRef.current = null
-      if (usingSFRef.current) {
-        const index = wordIndexAtAnchor(viewportRef.current, undefined, lineHeightPx)
+    // Tell Smart Follow NOW, while the text is still travelling.
+    //
+    // This used to wait for the glide to land, on the reasoning that reading the DOM any earlier
+    // hands back the word the presenter was on *before* the nudge. True of the anchor as it
+    // stands — but the destination is known here, so the anchor as it WILL be is known too: the
+    // content moves up by `dest - position`, so whatever sits that far below the anchor right now
+    // is what ends up on it. Same reasoning as jumpToWordIndex, which never needed the wait.
+    //
+    // The wait was not small. `isGliding()` clears when the easing comes within half a pixel of
+    // its target, not when the motion stops looking finished: tau x ln(2 x distance) at
+    // tau = 0.35s — measured, 1.7s for one line and 2.3s for four, against about a second of
+    // visible travel. And a nudge is a recovery tool, so the presenter is re-reading inside that
+    // window: `reanchorTo` is what empties the recognition window, and the words still in it were
+    // spoken ahead of the line just chosen, so they out-vote the re-anchor on the next partial.
+    if (usingSFRef.current) {
+      const height = viewportRef.current?.getBoundingClientRect().height ?? 0
+      if (height > 0) {
+        // Beyond the viewport for a long nudge, which is fine: elementFromPoint simply misses and
+        // the nearest-line fallback measures against the same shifted anchor.
+        const anchor = FOCUS_ANCHOR + (dest - engine.position) / height
+        const index = wordIndexAtAnchor(viewportRef.current, anchor, lineHeightPx)
         if (index != null) sfRef.current.reanchorTo(index)
       }
     }
-    settleRafRef.current = requestAnimationFrame(whenSettled)
   }
-  useEffect(() => () => cancelAnimationFrame(settleRafRef.current), [])
 
   /**
    * Glide so that a KNOWN word index sits at the Focus Zone, and tell Smart Follow it is there.
    *
-   * Unlike nudgeLines this needs no rAF settle loop: the destination index is known up front, so
-   * the re-anchor is exact and immediate instead of read back off the DOM once the glide lands.
+   * The re-anchor is exact rather than measured: the destination index is known up front, so
+   * nothing has to be read back off the DOM at all. nudgeLines reaches the same place by the
+   * other road — it knows the destination in PIXELS, so it can ask which word will be at the
+   * anchor before the text gets there. Neither one waits for the glide.
+   *
    * The same geometry as the per-word follow target, so a jump puts the line exactly where
    * ordinary following would have put it.
    *
@@ -439,11 +450,6 @@ export function PromptScreen() {
       settings.mirror,
     )
     if (dest == null) return false
-    // A nudge still in flight would re-anchor Smart Follow to wherever ITS glide was heading,
-    // undoing this jump a frame or two after it lands. And this is an absolute move, so it must
-    // not stack onto the relative destination nudgeLines was accumulating.
-    cancelAnimationFrame(settleRafRef.current)
-    nudgeDestRef.current = null
     const clamped = engine.glideTo(dest)
     // Follow mode smooth-damps toward targetPosition; without this it pulls straight back to the
     // pre-jump target, exactly as tap-to-jump and nudgeLines both document.
@@ -475,10 +481,6 @@ export function PromptScreen() {
     const next = clampTextScale(Math.round((settings.textScale + delta) * 100) / 100)
     if (next === settings.textScale) return
     resizeAnchorRef.current = lineElementAtAnchor(viewportRef.current, undefined, lineHeightPx)
-    // A nudge still settling would re-anchor to the destination ITS glide was heading for, a frame
-    // or two after this has placed the text — the same guard jumpToWordIndex documents.
-    cancelAnimationFrame(settleRafRef.current)
-    nudgeDestRef.current = null
     updateSettings({ textScale: next })
     setControlsVisible(true)
     scheduleHide(engine.playing)
@@ -526,8 +528,7 @@ export function PromptScreen() {
     // without it follow mode damps back to the target it held before the resize.
     engine.setPosition(dest)
     engine.setTargetPosition(dest)
-    // Placed by the line rather than by the matcher, so tell the matcher where that leaves it —
-    // this also stands in for the nudge settle cancelled above, which would have done the same.
+    // Placed by the line rather than by the matcher, so tell the matcher where that leaves it.
     // Read off the captured line rather than the DOM: the line IS at the anchor by construction
     // now, whereas the transform carrying it there is not written until the next frame.
     if (fromWord == null && usingSFRef.current) {
