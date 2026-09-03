@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject } from 'react'
 import { type ScriptDoc, PAUSE_GLYPH } from '../../model/document'
 import type { PresetStyle } from '../../model/presets'
+import { FOCUS_ANCHOR } from '../../smartfollow/positionMap'
 import { normalizeWord } from '../../smartfollow/tokenizeScript'
 import { cn } from '../ui/cn'
 import { toRenderBlocks } from './promptBlocks'
@@ -72,8 +73,11 @@ export function PromptText({ doc, preset, mirror, contentRef, wordIndices }: Pro
       data-prompter-text
       className={cn('will-change-transform', mirror && '-scale-x-100')}
       style={{
-        paddingTop: '40vh',
-        paddingBottom: '60vh',
+        // These ARE the anchor: the top padding is what lets the first line start at the Focus
+        // Zone, and the bottom padding is what lets the last line reach it. Hardcoding 40/60 here
+        // would silently strand the first and last lines if the anchor ever moved.
+        paddingTop: `${FOCUS_ANCHOR * 100}vh`,
+        paddingBottom: `${(1 - FOCUS_ANCHOR) * 100}vh`,
         fontSize: `${preset.fontSize}px`,
         lineHeight: preset.lineHeight,
       }}

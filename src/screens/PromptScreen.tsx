@@ -10,7 +10,12 @@ import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
 import type { VoskErrorKind } from '../smartfollow/useVosk'
 import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
-import { wordIndexAtAnchor, firstWordIndexIn, wordProgressTarget } from '../smartfollow/positionMap'
+import {
+  wordIndexAtAnchor,
+  firstWordIndexIn,
+  wordProgressTarget,
+  scrollTargetForLine,
+} from '../smartfollow/positionMap'
 import { paragraphJumpTargets, previousParagraphIndex } from '../smartfollow/paragraphJumps'
 
 const MIN_SPEED = 0.4
@@ -343,7 +348,9 @@ export function PromptScreen() {
     }
   }, [engine, lineHeightPx, paragraphTargets])
 
-  // Glide the tapped line into the Focus Zone (~40% of the viewport height).
+  // Glide the tapped line into the Focus Zone. The geometry is scrollTargetForLine's — this used
+  // to inline its body with the anchor hardcoded, which is exactly how the tap and the follow
+  // would drift apart if the anchor ever moved.
   const jumpToLineAt = (x: number, y: number): boolean => {
     const viewport = viewportRef.current
     if (!viewport) return false
@@ -353,7 +360,7 @@ export function PromptScreen() {
     if (!line) return false
     const lineRect = line.getBoundingClientRect()
     const vpRect = viewport.getBoundingClientRect()
-    const dest = engine.position + (lineRect.top - vpRect.top) - 0.4 * vpRect.height
+    const dest = scrollTargetForLine(engine.position, lineRect.top, vpRect.top, vpRect.height)
     engine.glideTo(dest)
     // glideTo drives the one-shot glide only; it never touches targetPosition. Without this,
     // follow mode smooth-damps back to the stale pre-tap target the moment the glide ends —

@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import type { PresetStyle } from '../../model/presets'
 import { change, travel, travelLarge } from '../../motion/tokens'
 import { FocusZone } from '../prompt/FocusZone'
+import { FOCUS_ANCHOR } from '../../smartfollow/positionMap'
 
 interface SetupPreviewProps {
   preset: PresetStyle
@@ -70,7 +71,7 @@ export function SetupPreview({ preset, presetLabel, mirror, readingMarker }: Set
           <motion.div
             aria-hidden
             className="pointer-events-none absolute left-4 z-20 text-fg-muted sm:left-8"
-            style={{ top: '40%', fontSize: '1.5rem' }}
+            style={{ top: `${FOCUS_ANCHOR * 100}%`, fontSize: '1.5rem' }}
             initial={{ opacity: 0, x: -4, y: '-50%' }}
             animate={{ opacity: 1, x: 0, y: '-50%' }}
             exit={{ opacity: 0, x: -4, y: '-50%' }}
