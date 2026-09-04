@@ -144,3 +144,42 @@ describe('matchPosition — localOnly (manual re-anchor guard)', () => {
     expect(r.confidence).toBeGreaterThan(0.75)
   })
 })
+
+describe('matchPosition — a far jump needs real evidence (§30)', () => {
+  // The presenter is at the top. Sixty words of padding push the rest of the script outside the
+  // forward window (40), so nothing below can be reached except by widening the search.
+  const t = toks(
+    'alfa beta gamma delta epsilon zeta ' +
+      Array.from({ length: 60 }, (_, i) => `wypelniacz${i}`).join(' ') +
+      ' pierwszy raport zaczyna sie teraz nadchodzi',
+  )
+
+  it('holds position when only half the phrase lines up far away', () => {
+    // "raport … sie … nadchodzi" — three of six, in order: exactly the chance alignment an
+    // off-script sentence or a garbled patch of recognition produces somewhere in a long script.
+    // It scores 0.5, which clears the local bar and used to move the presenter 68 words down.
+    const r = matchPosition(t, 3, ['raport', 'wczoraj', 'sie', 'okazalo', 'nadchodzi', 'burza'])
+    expect(r.moved).toBe(false)
+    expect(r.index).toBe(3)
+  })
+
+  it('still reaches that phrase when the whole of it lines up', () => {
+    const r = matchPosition(t, 3, ['pierwszy', 'raport', 'zaczyna', 'sie', 'teraz', 'nadchodzi'])
+    expect(r.moved).toBe(true)
+    expect(t[r.index].text).toBe('nadchodzi')
+  })
+
+  it('never crosses the script on a single word, however well it matches', () => {
+    // One word scores a perfect 1.0 wherever it occurs, so no ratio can refuse it — the evidence
+    // floor is the only thing that can, and one word can never carry enough of it.
+    const r = matchPosition(t, 3, ['nadchodzi'])
+    expect(r.moved).toBe(false)
+    expect(r.index).toBe(3)
+  })
+
+  it('still tracks inside the local window on a single word', () => {
+    const r = matchPosition(t, 3, ['epsilon'])
+    expect(r.moved).toBe(true)
+    expect(t[r.index].text).toBe('epsilon')
+  })
+})
