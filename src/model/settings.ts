@@ -5,13 +5,22 @@ export type SttLanguage = 'en-US' | 'pl-PL'
 /**
  * Manual text size, as a multiplier on the chosen preset.
  *
- * The floor is 34/50 — the font the old `close` preset used, over Standard's. Close was dropped
- * because "smaller" is not a step, it is an amount: how much smaller depends on the room the
- * presenter is standing in, which is not knowable from here. The floor is reachable in exact
- * steps (1.00 → 0.92 → 0.84 → 0.76 → 0.68), so what Close used to give is still on the dial
- * rather than being rounded past.
+ * The floor exists to keep the font the old `close` preset used still reachable. Close was
+ * dropped because "smaller" is not a step, it is an amount: how much smaller depends on the room
+ * the presenter is standing in, which is not knowable from here.
+ *
+ * It was 34/50 while Standard was 50px. **Standard is now 60px** (see PRESETS — it was raised so
+ * its column fills the screen the way Distance's does), and a multiplier is not a size: left at
+ * 0.68 the same floor became 40.8px, half again the smallest text the app used to offer, and a
+ * presenter migrated off Close would have landed somewhere their room was not set up for.
+ *
+ * 0.60 puts it back at 36px — within 2px of Close's 34, and still the smallest the app goes. What
+ * is preserved exactly is the property that matters: the floor is reachable in whole
+ * TEXT_SCALE_STEP increments (1.00 → 0.92 → 0.84 → 0.76 → 0.68 → 0.60), five presses now rather
+ * than four, so it sits ON the dial instead of being rounded past. Distance's floor comes down
+ * with it, 68px → 60px, which is reach gained and nothing lost.
  */
-export const TEXT_SCALE_MIN = 0.68
+export const TEXT_SCALE_MIN = 0.6
 export const TEXT_SCALE_MAX = 1.5
 export const TEXT_SCALE_STEP = 0.08
 

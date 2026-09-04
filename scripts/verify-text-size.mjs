@@ -198,7 +198,10 @@ for (const screen of SCREENS) {
   const floor = await readAnchor(p)
   check(
     floor.readout === pct(TEXT_SCALE_MIN),
-    'the floor is the size the retired Close preset used to give',
+    // Close gave 34px. The floor tracks it rather than equalling it: Standard was raised 50 → 60
+    // so its column fills the screen, and the floor is a MULTIPLIER — so it came down to keep the
+    // bottom of the dial in the same place. Read from source, so this holds through a device tune.
+    'the floor is a whole number of A− presses, and near the font Close used to give',
     `readout ${floor.readout} after ${presses} presses`,
   )
   check(pitchAgrees(floor), 'the pitch still agrees at the floor')

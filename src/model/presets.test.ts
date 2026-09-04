@@ -121,8 +121,32 @@ describe('applyTextScale', () => {
     expect(applyTextScale(style, 1)).toEqual(style)
   })
 
-  it('lands the smallest size on the font the retired Close preset used', () => {
-    expect(applyTextScale(PRESETS.standard, TEXT_SCALE_MIN).fontSize).toBe(34)
+  it('lands the smallest size within a couple of px of what Close used to give', () => {
+    // Close was 34px. Standard has since been raised 50 → 60 so its column fills the screen, and
+    // the floor is a MULTIPLIER — so it came down to 0.60 to keep the bottom of the dial in the
+    // same place. 36px is the nearest size that is still reachable in whole A− steps; the reason
+    // this asserts a window rather than a number lives in settings.ts beside TEXT_SCALE_MIN.
+    const px = applyTextScale(PRESETS.standard, TEXT_SCALE_MIN).fontSize
+    expect(px).toBeGreaterThanOrEqual(34)
+    expect(px).toBeLessThanOrEqual(38)
+  })
+
+  it('keeps Standard filling the screen it is authored for', () => {
+    // The change this preset exists in: the column was 78.7% of the reference tablet while
+    // Distance's was 95.5%, and a fifth of the screen went unused for no stated reason.
+    const share = PRESETS.standard.columnWidth / REFERENCE_VIEWPORT.width
+    expect(share).toBeGreaterThan(0.9)
+  })
+
+  it('raised Standard WITHOUT stretching its reading measure', () => {
+    // The trap the 1.2 factor exists to avoid: Standard already had the longest lines in the app,
+    // so widening the column alone would have made the worst measure here worse. Font and column
+    // moved together, which is what holds this ratio still — it was 17.84 em before the change.
+    const em = (p: (typeof PRESETS)['standard']) => (p.columnWidth - 48) / p.fontSize
+    expect(em(PRESETS.standard)).toBeGreaterThan(16)
+    expect(em(PRESETS.standard)).toBeLessThan(19)
+    // And it is still the longer of the two — Distance's larger type is what shortens its lines.
+    expect(em(PRESETS.standard)).toBeGreaterThan(em(PRESETS.distance))
   })
 })
 

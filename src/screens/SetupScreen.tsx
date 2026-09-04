@@ -1,21 +1,34 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useStore } from '../state/store'
 import { change, press, pressScale, travel } from '../motion/tokens'
-import { PRESETS, PRESET_ORDER, applyTextScale } from '../model/presets'
+import { PRESETS, PRESET_ORDER, resolvePreset } from '../model/presets'
 import { LANGUAGE_LABELS, type Preset, type SttLanguage } from '../model/settings'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Toggle } from '../components/ui/Toggle'
 import { CtaButton } from '../components/ui/CtaButton'
 import { SetupPreview } from '../components/setup/SetupPreview'
+import { useViewportSize } from '../engine/useViewportSize'
 
 export function SetupScreen() {
   const settings = useStore((s) => s.settings)
   const updateSettings = useStore((s) => s.updateSettings)
   const goTo = useStore((s) => s.goTo)
-  // Carries the presenter's manual size, or the preview shows a size they are not going to get.
-  // Only the manual scale, not the viewport fit: the preview is its own shrunken thing and
-  // PREVIEW_SCALE is tuned against the authored numbers.
-  const preset = applyTextScale(PRESETS[settings.preset], settings.textScale)
+  const viewport = useViewportSize()
+  /*
+   * The FULLY resolved preset — the identical call PromptScreen makes, viewport fit included.
+   *
+   * It used to be `applyTextScale` alone, on the reasoning that the preview was "its own shrunken
+   * thing" measured against the authored numbers. That reasoning died with PREVIEW_SCALE: the
+   * panel is now a scaled replica of this screen, and a replica of the AUTHORED reference tablet
+   * would be a faithful picture of a device the presenter is not holding — wrong by however much
+   * their screen differs from an iPad in landscape.
+   */
+  const preset = resolvePreset(
+    PRESETS[settings.preset],
+    viewport.width,
+    viewport.height,
+    settings.textScale,
+  )
 
   return (
     <div className="flex h-[100dvh] flex-col">
@@ -136,6 +149,7 @@ export function SetupScreen() {
           <div className="min-h-56 sm:min-h-72">
             <SetupPreview
               preset={preset}
+              viewport={viewport}
               presetLabel={
                 settings.textScale === 1
                   ? preset.label

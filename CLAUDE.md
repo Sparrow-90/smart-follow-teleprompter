@@ -22,6 +22,11 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
 - **Manual text size — shipped** (branch `manual-text-size`). The `close` preset is gone; Reading
   distance is two starting points and the presenter sets the size themselves in Prompt Mode, with
   A− / A+. Size is the one setting that cannot be decided at a desk — it is a fact about the room.
+- **Column fit + preview fidelity — shipped** (branch `prompter-column-fit`). Standard's column
+  filled only 78.7% of the screen where Distance's filled 95.5%; font, column and speed were
+  raised together by 1.2 so it fills without stretching an already-long measure. Setup's preview
+  is now a true scaled replica rather than a tuned miniature — it had been wrapping text 18.5%
+  early. **The device check now owes an answer on Standard at 60px as well as on Geist.**
 - **Visual language — shipped** (branch `visual-language-pass`). Geist replaces Inter, the script
   carries authored display tracking, the uppercase micro-label became a token, and the motion
   vocabulary now reaches Prompt Mode. Deliberately NOT a colour or depth pass — the brief was
@@ -311,6 +316,46 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   desk. The target is a budget Android tablet, not the iPad the repo is designed around.
   `verify-type-motion.mjs` runs in `vercel-build` (no server, no browser — the same property that
   put `verify-lexicon` there), so a drift across the boundary fails the build rather than shipping.
+- **Setup's preview is a scaled REPLICA, and one factor is what makes it one.** It used to scale
+  `columnWidth` by a tuned `PREVIEW_SCALE = 0.3` and then subtract an UNSCALED `px-8` beside it,
+  where Prompt Mode subtracts `px-6` from an unscaled column — so it lost ~50px no factor
+  accounted for and wrapped text **18.5% earlier at Standard, 15.1% at Distance** than the real
+  screen. A panel whose entire job is "what will my script look like" was answering wrong, for
+  every script, invisibly. Now ONE factor —
+  `min(panel.w / viewport.w, panel.h / viewport.h)` — multiplies font size, column width, the
+  padding beside it and `FocusZone`'s `lineHeightPx`, so line length in ems equals Prompt Mode's
+  *by construction* rather than by a constant staying true. It also takes the fully
+  **resolved** preset (`SetupScreen` calls the same `resolvePreset` `PromptScreen` does, via the
+  shared `engine/useViewportSize`), or it would be a faithful picture of a device nobody holds.
+  `min()` of both axes, not width alone: width alone fills the panel edge-to-edge but overstates
+  how much script fits on screen, which is the more expensive lie. Fill went 31.7% → ~95%.
+  Two things that look like tidying and are not: the sample sits at `FOCUS_ANCHOR`, not centred,
+  because the `›` marker and the clear band are both built around that number and centring made
+  them agree only by luck; and the bottom scrim is preview-only because `FocusZone`'s gradient
+  does not reach the background until 100%, so at Distance the last line ran straight through the
+  caption — and `FocusZone` cannot be changed, Prompt Mode shares it.
+  `verify-preset-size.mjs` now compares content-width ÷ fontSize in both places and fails on >2%
+  drift; that ratio is scale-free, which is what lets one number check a 282px miniature against a
+  1128px screen.
+- **Standard was raised 1.2× — font, column AND speed together, never the column alone.** Its
+  column reached 78.7% of the reference screen where Distance's reached 95.5%, and measured with
+  real prose the longest rendered line used only 71.1% of the screen. The tempting repair is the
+  wrong one: Standard already has the **longest lines in the app** (17.84 em against Distance's
+  10.92 — Distance's larger type is what shortens its), so widening the column alone would have
+  taken the worst measure here and stretched it to 21.6 em. Scaled together the column reaches
+  94.5% and the measure lands at 18.00 — unmoved. `baseSpeed` moves with them or the same px/sec
+  reads as a different reading pace.
+  **A preset fontSize drags `TEXT_SCALE_MIN` with it**, which is the non-obvious half. That floor
+  is a MULTIPLIER whose whole purpose is landing a presenter migrated off the retired `close`
+  preset on the 34px Close gave; at 60px the old 0.68 silently became 40.8px. It is now 0.60 →
+  36px, chosen because it is the nearest value still reachable in whole `TEXT_SCALE_STEP` presses
+  (five now, not four) — a floor off the step grid can be migrated INTO but never pressed down to.
+  The tests assert a 34–38px window plus the step-grid property, because it is the PAIR that has
+  to agree and either number may move on a device.
+- **`verify-preset-size.mjs` reads `lineHeight` from source, and that is why it covers both
+  presets.** It used to hardcode `fontSize * 1.5` — Distance's value — which is the entire reason
+  Standard (1.45) was never checked there. Anything that retunes a `lineHeight` would have failed
+  it for the right reason with a misleading message.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -393,7 +438,12 @@ node scripts/verify-bundle.mjs  # builds, then guards chunk shape + PWA precache
 node scripts/verify-models.mjs  # guards that dist/ actually contains the Vosk models (run after a build)
 node scripts/verify-mic-order.mjs # mic is taken before the model downloads (fake capture device)
 node scripts/verify-paste.mjs   # a PDF paste lands as the paragraphs the PDF actually had
-node scripts/verify-preset-size.mjs # presets fill the screen; lineHeightPx matches what renders
+node scripts/verify-preset-size.mjs # both presets fill the screen, lineHeightPx matches what
+                                # renders, AND Setup's preview wraps where Prompt Mode wraps.
+                                # RUN THIS after touching SetupPreview, presets.ts, or
+                                # PromptText's sizing — it needs a dev server, so unlike
+                                # verify-type-motion it cannot ride in `vercel-build`, and it
+                                # is the only thing guarding a bug class that shipped unseen.
 node scripts/verify-text-size.mjs # A-/A+ resize the script without moving the presenter off their line
 node scripts/verify-nudge.mjs # one press = exactly one line, and Smart Follow is told at once
 node scripts/verify-voice-commands.mjs # "Klik góra" / "Click up" move the script (no mic needed)

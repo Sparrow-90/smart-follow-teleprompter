@@ -49,12 +49,21 @@ export const PRESETS: Record<Preset, PresetStyle> = {
   standard: {
     label: 'Standard',
     helper: 'The default for most setups.',
-    fontSize: 50,
+    // Raised from 50/940/65 by a single factor of 1.2, all three together.
+    //
+    // The column was 78.7% of the reference screen where Distance's is 95.5%, and measured with
+    // real prose the longest rendered line reached only 71.1% of the screen — a fifth of it went
+    // unused with no reason behind the number. Widening the column ALONE was the wrong repair:
+    // Standard already has the longest lines in the app at 17.84 em against Distance's 10.92, so
+    // that would have taken the worst reading measure here and stretched it further, which is the
+    // thing the note above warns about. Scaled together the column reaches 94.5% and the measure
+    // lands at 18.00 em — unmoved. See TEXT_SCALE_MIN in settings.ts, which had to follow.
+    fontSize: 60,
     lineHeight: 1.45,
     letterSpacing: '-0.018em',
     fontWeight: 500,
-    columnWidth: 940,
-    baseSpeed: 65,
+    columnWidth: 1128,
+    baseSpeed: 78,
   },
   distance: {
     label: 'Distance',
