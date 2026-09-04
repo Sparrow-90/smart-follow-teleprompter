@@ -21,6 +21,10 @@ const style: PresetStyle = {
   helper: '',
   fontSize: 100,
   lineHeight: 1.5,
+  // Deliberately distinctive values: both fields are corrections that must survive scaling
+  // untouched, and the tests below assert exactly that by comparing whole objects.
+  letterSpacing: '-0.02em',
+  fontWeight: 500,
   columnWidth: 1000,
   baseSpeed: 50,
 }
@@ -147,5 +151,36 @@ describe('resolvePreset with a manual scale', () => {
     // number — two roundings compound into a pitch that no longer matches what renders.
     const odd = { ...style, fontSize: 33 }
     expect(resolvePreset(odd, W * 1.3, H * 1.3, 0.76).fontSize).toBe(Math.round(33 * 1.3 * 0.76))
+  })
+})
+
+/**
+ * Tracking and weight are corrections to a size, not sizes themselves — Geist has no optical
+ * axis, so they are authored by hand beside the fontSize they answer to. Both must therefore
+ * ride through every scaling path unchanged: an em tracking already follows fontSize, and
+ * scaling the *number* on top of that would compound the correction with itself.
+ */
+describe('the script typography carried on a preset', () => {
+  it('leaves tracking and weight alone when the presenter resizes the text', () => {
+    const scaled = applyTextScale(style, 1.5)
+    expect(scaled.letterSpacing).toBe(style.letterSpacing)
+    expect(scaled.fontWeight).toBe(style.fontWeight)
+    expect(scaled.fontSize).toBe(150)
+  })
+
+  it('leaves them alone when the preset is fitted to a bigger screen', () => {
+    const fitted = resolvePreset(style, W * 1.4, H * 1.4, 1.2)
+    expect(fitted.letterSpacing).toBe(style.letterSpacing)
+    expect(fitted.fontWeight).toBe(style.fontWeight)
+    expect(fitted.fontSize).toBeGreaterThan(style.fontSize)
+  })
+
+  it('authors both on every real preset, tighter at the larger one', () => {
+    for (const p of PRESET_ORDER) {
+      expect(PRESETS[p].letterSpacing).toMatch(/^-?\d*\.?\d+em$/)
+      expect(PRESETS[p].fontWeight).toBeGreaterThan(0)
+    }
+    const em = (s: string) => parseFloat(s)
+    expect(em(PRESETS.distance.letterSpacing)).toBeLessThan(em(PRESETS.standard.letterSpacing))
   })
 })

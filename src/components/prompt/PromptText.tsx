@@ -80,6 +80,11 @@ export function PromptText({ doc, preset, mirror, contentRef, wordIndices }: Pro
         paddingBottom: `${(1 - FOCUS_ANCHOR) * 100}vh`,
         fontSize: `${preset.fontSize}px`,
         lineHeight: preset.lineHeight,
+        // Both are authored on the preset, beside the size they are corrections for, and both
+        // ride here on the same element as fontSize — an em tracking has to resolve against the
+        // size it belongs to, and this is the only element that knows it. See PresetStyle.
+        letterSpacing: preset.letterSpacing,
+        fontWeight: preset.fontWeight,
       }}
     >
       <div data-prompter-column className="mx-auto px-6" style={{ maxWidth: `${preset.columnWidth}px` }}>
@@ -133,7 +138,7 @@ export function PromptText({ doc, preset, mirror, contentRef, wordIndices }: Pro
                   )}
                 >
                   {glyph}
-                  <span className="text-[0.4em] leading-none font-semibold tabular-nums">
+                  <span className="type-numeral text-[0.4em] leading-none font-semibold">
                     {item.section}
                   </span>
                 </span>
@@ -146,7 +151,9 @@ export function PromptText({ doc, preset, mirror, contentRef, wordIndices }: Pro
             <p
               key={i}
               data-prompter-line
-              className="font-medium"
+              // No weight class: the script's weight is authored per preset and inherited from
+              // the element above, which is also what sizes it. A `font-medium` here would win
+              // over that and pin every preset to 500.
               style={{ marginTop: `${BLOCK_MARGIN_EM}em`, marginBottom: `${BLOCK_MARGIN_EM}em` }}
             >
               {block.runs.map((run, j) => {

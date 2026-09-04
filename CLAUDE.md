@@ -22,6 +22,11 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
 - **Manual text size — shipped** (branch `manual-text-size`). The `close` preset is gone; Reading
   distance is two starting points and the presenter sets the size themselves in Prompt Mode, with
   A− / A+. Size is the one setting that cannot be decided at a desk — it is a fact about the room.
+- **Visual language — shipped** (branch `visual-language-pass`). Geist replaces Inter, the script
+  carries authored display tracking, the uppercase micro-label became a token, and the motion
+  vocabulary now reaches Prompt Mode. Deliberately NOT a colour or depth pass — the brief was
+  typography and motion, monochrome kept. **The preset sizes still want a device check** (see the
+  gotcha below): `fontSize: 50 / 100` were measured against Inter's x-height, not Geist's.
 - **Paragraph markers — shipped** (branch `paragraph-markers`). A `section` block the presenter
   places (or that a reflowed PDF paste places for them), rendered as a numbered rule, with
   **"Klik akapit" / "Click paragraph"** jumping BACK a paragraph. Recovery, not navigation.
@@ -30,7 +35,7 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
 
 React 18 · TypeScript · Vite 6 · Tailwind v4 (`@tailwindcss/vite`) · `vite-plugin-pwa` · Zustand ·
 idb-keyval · Vitest 3 · Framer Motion (the `motion` package, imported from `motion/react`).
-On-device speech: `vosk-browser` (WASM). Inter self-hosted.
+On-device speech: `vosk-browser` (WASM). Geist + Geist Mono self-hosted (Urbanist for the byline).
 
 ## Architecture
 
@@ -256,6 +261,56 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   with permissions cleared rejects `getUserMedia` with `NotSupportedError`, never the
   `NotAllowedError` a real browser raises, so the permission path is unreachable through
   Playwright's permission API.
+- **The motion vocabulary has to cross a boundary the type scale does not.** `motion/tokens.ts` is
+  TypeScript, and `components/prompt/` may contain no `motion.*` at all — so Prompt Mode animates
+  in CSS, and left to itself it invented its own numbers. The `change` curve had ended up in FOUR
+  places at THREE durations: `motion/tokens.ts` (200ms), the theme cross-fade (250ms),
+  `SegmentedControl` (`duration-200 ease-out` — a different curve), and the Prompt Mode chrome and
+  controls (`duration-300`, matching nothing). The screen the presenter actually reads was the one
+  speaking the ad-hoc dialect, and its buttons had no press feedback of any kind. `index.css` now
+  holds `--ease-change` / `--duration-change` / `--duration-press` / `--duration-theme`, and
+  `verify-type-motion.mjs` reads BOTH files and fails if they disagree — a CSS variable cannot
+  import from a `.ts`, so agreement is asserted rather than enforced, exactly as `lineHeightPx` is.
+  The theme fade stays deliberately slower than `change`: it repaints every colour at once.
+  **`.pressable` is what gives Prompt Mode its press-scale, and its transition list is spelled out
+  on purpose.** `@layer base` gives `body *` a `transition-property` of
+  background-color/border-color/color, and `transition-property` is REPLACED, never merged — so a
+  bare `transition-transform` utility (in `@layer utilities`, which wins) buys the scale and
+  silently costs the element its theme fade. Naming every property in one class is what lets a
+  control have both; `iconBtn` therefore carries NO `transition-opacity` of its own, or that
+  utility would replace the list right back. The scale is CSS on the BUTTONS — the ban is about
+  Framer and the engine both owning `transform` on `contentRef`, and nothing here goes near it.
+- **The script's tracking and weight are authored on the PRESET, because Geist has no optical
+  axis.** Inter shipped an `opsz` build (14→32) that fontsource exposes as `opsz.css`; Geist is
+  `wght` 100–900 and nothing else, so one fit serves 35px and 175px both. `PresetStyle` carries
+  `letterSpacing` (an **em** value, so it follows fontSize through `applyTextScale` and
+  `resolvePreset` without either knowing about it) and `fontWeight`, and `PromptText` sets both on
+  the same element as fontSize. A weight class on `[data-prompter-line]` would win over the
+  preset's and pin every preset to one value — the same failure mode `textScale` has, for the same
+  reason, which is why `verify-type-motion` bans it. Neither field touches `lineHeightPx`, the gap
+  box, or the `[data-w]` rects (measured live).
+  **The preset SIZES are now unverified against the face that renders them**: `fontSize: 50 / 100`
+  were measured on a real tablet against Inter's x-height. If a device check moves `lineHeight`,
+  note `verify-preset-size.mjs` hardcodes `fontSize * 1.5` (Distance's value) and would have to
+  read from `PRESETS`, and `verify-line-gap.mjs`'s "the tightest case is decided by lineHeight
+  alone" argument reopens. Tune `fontSize` alone and both stay valid.
+- **The micro-label is a token that compensates for its own tracking.**
+  `text-xs font-medium tracking-wide uppercase` had been retyped in eight files, and 0.025em is
+  Tailwind's default — enough that it read as small text that happened to be uppercase.
+  `.type-label` is 11px/600/0.14em, and the `margin-inline-end: -0.14em` is not a nicety: tracking
+  applies after the LAST letter too, so every label carried trailing air. Left-aligned in a flex
+  row that is visible slack (PromptChrome's Exit, Toggle's switch row); centred, it shifts the text
+  left. Pulling the box in by exactly the tracking fixes both, because on a centred line the same
+  amount leaves the measured width and the centring moves back by half of it. `.type-numeral` is
+  Geist Mono, and it is for READOUTS THAT CHANGE while being looked at — `1.0×`, `100%`, the
+  section number — because a proportional face makes the row reflow on every press. The Smart
+  Follow status takes NEITHER: every value it holds is prose, and a sentence in mono reads as code.
+  `#lab` keeps the old idiom on purpose — it is a dev harness, not the product path.
+  Setup's control labels went 12px/500 → 11px/600 with it, and those are the primary controls
+  rather than captions — so like the preset sizes, that size is confirmed on a screen, not at a
+  desk. The target is a budget Android tablet, not the iPad the repo is designed around.
+  `verify-type-motion.mjs` runs in `vercel-build` (no server, no browser — the same property that
+  put `verify-lexicon` there), so a drift across the boundary fails the build rather than shipping.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -347,6 +402,8 @@ node scripts/verify-grammar.mjs # the grammar recognizer hears "klik góra" wher
 node scripts/verify-paragraph-marker.mjs # markers render numbered; "klik akapit" steps back a paragraph
 node scripts/verify-mic-recovery.mjs # a refused mic says why, and the retry reopens it in place
 node scripts/verify-line-gap.mjs # a gap between two lines never costs more than one line pitch
+node scripts/verify-type-motion.mjs # one motion vocabulary + one label style across the Framer
+                                # boundary (no server needed)
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
 ```

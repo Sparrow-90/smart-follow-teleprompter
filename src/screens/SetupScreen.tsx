@@ -33,14 +33,14 @@ export function SetupScreen() {
               <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </motion.button>
-          <span className="text-xs font-medium tracking-wide text-fg-muted uppercase">Setup</span>
+          <span className="type-label text-fg-muted">Setup</span>
         </header>
 
         <main className="mt-6 grid gap-8 pb-6 lg:grid-cols-[minmax(0,22rem)_1fr]">
           {/* Controls */}
           <div className="flex flex-col gap-6">
           <div>
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-fg-muted uppercase">
+            <h2 className="type-label mb-3 text-fg-muted">
               Reading distance
             </h2>
             <SegmentedControl<Preset>
@@ -95,7 +95,7 @@ export function SetupScreen() {
                   transition={{ height: travel, opacity: change }}
                 >
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-xs font-medium tracking-wide text-fg-muted uppercase">
+                    <span className="type-label text-fg-muted">
                       Language
                     </span>
                     <select

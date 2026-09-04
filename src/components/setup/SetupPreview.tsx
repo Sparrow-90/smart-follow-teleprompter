@@ -82,7 +82,7 @@ export function SetupPreview({ preset, presetLabel, mirror, readingMarker }: Set
         )}
       </AnimatePresence>
 
-      <span className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 text-[0.65rem] tracking-wide text-fg-muted uppercase">
+      <span className="type-label absolute bottom-3 left-1/2 z-20 -translate-x-1/2 text-fg-muted">
         {presetLabel} — Preview
       </span>
     </div>

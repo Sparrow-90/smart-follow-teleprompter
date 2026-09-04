@@ -29,9 +29,41 @@
   --color-accent-fg: #ffffff;
 }
 
+/*
+ * MOTION, shared with src/motion/tokens.ts.
+ *
+ * These exist because the motion vocabulary has to cross a boundary the JS tokens cannot:
+ * `components/prompt/` may contain no `motion.*` at all (Framer owns `transform`, and so does
+ * the scroll engine), so Prompt Mode animates in CSS. Left to itself it invented its own
+ * numbers — `duration-300` in the chrome and the controls, `duration-200 ease-out` in the
+ * segmented control — none of which matched `change`, and the app ended up with two motion
+ * languages with the screen the presenter actually reads speaking the ad-hoc one.
+ *
+ * A CSS variable cannot import from a `.ts` file, so the two are kept honest the way this repo
+ * keeps `lineHeightPx` honest: by a check that reads both and asserts they agree
+ * (`scripts/verify-type-motion.mjs`). Change a number here and it must change there too.
+ *
+ * Deliberately NOT theme-swapped — motion is not a colour — so this is its own `:root` block
+ * rather than a line in the two above.
+ */
+:root {
+  /* = `change` in motion/tokens.ts. Colour, opacity, cross-fades: fast start, soft stop. */
+  --ease-change: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-change: 200ms;
+  /* = `press`'s visualDuration. A real tap holds for ~40ms; this lands inside that window. */
+  --duration-press: 140ms;
+  /*
+   * The theme cross-fade alone is slower, and that is deliberate rather than a stale copy: it
+   * repaints every colour on the screen at once, where `change` moves one control.
+   */
+  --duration-theme: 250ms;
+}
+
 /* Expose the semantic tokens to Tailwind utilities (bg-bg, text-fg, border-border, …). */
 @theme inline {
-  --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+  --font-sans: 'Geist Variable', system-ui, sans-serif;
+  /* Numerals only — see `.type-numeral` below for what that means and why. */
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
   /* Exists solely for the byline under the PROMPTLY lockup. The mark itself is vector art
      (components/ui/Wordmark), not text, so no display face is needed. */
   --font-byline: 'Urbanist Variable', Urbanist, var(--font-sans);
@@ -88,8 +120,84 @@ body {
   body,
   body * {
     transition-property: background-color, border-color, color;
-    transition-duration: 250ms;
-    transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+    transition-duration: var(--duration-theme);
+    transition-timing-function: var(--ease-change);
+  }
+}
+
+/*
+ * TYPE ROLES.
+ *
+ * Two, not a full scale — only the idioms that were actually being retyped earn a name here.
+ * `components` rather than `utilities` is the point of the layer choice: a site can still say
+ * `text-fg-muted` or `text-fg` on top and win, because utilities beat components.
+ */
+@layer components {
+  /*
+   * The uppercase micro-label. This was `text-xs font-medium tracking-wide uppercase`, retyped
+   * in eight files, and `tracking-wide` is Tailwind's 0.025em — enough that 12px uppercase read
+   * as "small text that happens to be uppercase" rather than as a register of its own. Smaller,
+   * heavier and properly opened up is what makes it read as deliberate.
+   */
+  .type-label {
+    font-size: 0.6875rem; /* 11px */
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    font-weight: 600;
+    text-transform: uppercase;
+    /*
+     * Tracking is applied AFTER the last letter too, so the glyphs no longer fill their own box
+     * and every label carries a trailing 0.14em of air. Left-aligned in a flex row that is
+     * visible slack (PromptChrome's Exit sits in a `gap-2` row; Toggle's label in a `gap-3` one
+     * against a right-aligned switch); centred, it shifts the text visibly left. Pulling the box
+     * back in by exactly the tracking fixes BOTH, because on a centred line the same 0.14em is
+     * removed from the measured width and the centring moves back by half of it — which is the
+     * offset the trailing space caused. Compensated once here so no site has to remember.
+     */
+    margin-inline-end: -0.14em;
+  }
+
+  /*
+   * Numerals — the speed multiplier, the manual text size, the section number, the Smart Follow
+   * status. These are readouts that CHANGE while the presenter is looking at them, and a
+   * proportional face makes them jitter: `1.0×` and `1.1×` are different widths in Geist Sans,
+   * so the row reflows on every press. Geist Mono is fixed-advance, so the digits sit still.
+   * (`tabular-nums`, which these sites used before, only fixes the digits — not the `×` or `%`.)
+   */
+  .type-numeral {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * Press feedback for controls Framer cannot reach.
+   *
+   * Everywhere else `whileTap={{ scale: pressScale.* }}` does this, but `components/prompt/`
+   * may contain no `motion.*` at all — so Prompt Mode's buttons had no press feedback of any
+   * kind, just `active:opacity-70`, on the one screen the presenter actually uses. This is the
+   * same gesture in CSS. It stays on the BUTTONS: the ban exists because Framer and the scroll
+   * engine would both own `transform` on `contentRef`, and neither this nor anything else here
+   * goes near that element, the `[data-w]` spans, or FocusZone.
+   *
+   * The transition list is spelled out, and that is the load-bearing part rather than tidiness.
+   * `@layer base` gives `body *` a `transition-property` of background-color/border-color/color
+   * for the theme cross-fade, and `transition-property` is REPLACED, never merged — so a bare
+   * `transition-transform` utility (which lands in `@layer utilities` and therefore wins) buys
+   * the scale and silently costs the element its theme fade. Naming every property here is what
+   * lets a control have both, and doing it once is what stops it being got wrong per-site.
+   *
+   * `:not(:disabled)` because a disabled button still matches `:active` in some browsers, and a
+   * control with nothing left to give must not answer a press — A− at the bottom of the range
+   * would otherwise look like it worked.
+   */
+  .pressable {
+    transition-property: transform, opacity, color, background-color, border-color;
+    transition-duration: var(--duration-press);
+    transition-timing-function: var(--ease-change);
+  }
+  .pressable:active:not(:disabled) {
+    /* Matches pressScale.small — these are ~44pt targets, the same class as a toolbar button. */
+    transform: scale(0.94);
   }
 }
 

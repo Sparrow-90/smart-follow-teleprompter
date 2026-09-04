@@ -7,14 +7,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "vercel-build": "bash scripts/fetch-models.sh && npm run build && node scripts/verify-models.mjs && node scripts/verify-lexicon.mjs",
+    "vercel-build": "bash scripts/fetch-models.sh && npm run build && node scripts/verify-models.mjs && node scripts/verify-lexicon.mjs && node scripts/verify-type-motion.mjs",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.1.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "@fontsource-variable/urbanist": "^5.3.0",
     "@huggingface/transformers": "^4.2.0",
     "@ricky0123/vad-web": "^0.0.30",

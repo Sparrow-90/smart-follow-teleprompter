@@ -14,7 +14,15 @@ interface PromptChromeProps {
   onStatusClick?: () => void
 }
 
-/** Minimal top chrome for Prompt Mode: Exit (top-left) + optional Smart Follow status (top-right). */
+/**
+ * Minimal top chrome for Prompt Mode: Exit (top-left) + optional Smart Follow status (top-right).
+ *
+ * The status deliberately takes NEITHER type token. It is not a numeral — every value it can hold
+ * is prose ("Loading model…", "Manual — allow the mic, then tap to retry", "● Following"), and in
+ * a monospace face a sentence reads as code. Nor is it a label: `type-label` is uppercase, and
+ * those same sentences shouted across the top of the screen are worse than the plain text they
+ * replaced. It stays sentence-case at the small size, which is what it always was.
+ */
 export function PromptChrome({ visible, onExit, status, onStatusClick }: PromptChromeProps) {
   return (
     <div
@@ -26,13 +34,13 @@ export function PromptChrome({ visible, onExit, status, onStatusClick }: PromptC
       // script. PromptControls goes the other way for the other reason: it shrink-wraps, so
       // there is barely any empty area to give away, and swallowing a near-miss there is a win.
       className={cn(
-        'pointer-events-none absolute top-0 right-0 left-0 z-30 flex items-center justify-between px-5 py-4 transition-opacity duration-300',
+        'pointer-events-none absolute top-0 right-0 left-0 z-30 flex items-center justify-between px-5 py-4 transition-opacity duration-[var(--duration-change)] ease-[var(--ease-change)]',
         visible ? 'opacity-100 [&_button]:pointer-events-auto' : 'opacity-0',
       )}
     >
       <button
         onClick={onExit}
-        className="flex items-center gap-2 text-xs font-medium tracking-wide text-fg-muted uppercase transition-colors hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="type-label pressable flex items-center gap-2 text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -44,12 +52,12 @@ export function PromptChrome({ visible, onExit, status, onStatusClick }: PromptC
           <button
             data-sf-status
             onClick={onStatusClick}
-            className="rounded-md px-2 py-1 text-xs font-medium tracking-wide text-fg-muted tabular-nums underline decoration-dotted underline-offset-4 transition-colors hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="pressable rounded-md px-2 py-1 text-xs font-medium text-fg-muted underline decoration-dotted underline-offset-4 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {status}
           </button>
         ) : (
-          <span data-sf-status className="text-xs font-medium tracking-wide text-fg-muted tabular-nums">
+          <span data-sf-status className="text-xs font-medium text-fg-muted">
             {status}
           </span>
         ))}

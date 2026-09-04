@@ -57,8 +57,8 @@ export function SegmentedControl<T extends string>({
             aria-checked={active}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'relative flex-1 rounded-lg px-4 py-2.5 text-xs font-medium tracking-wide uppercase',
-              'transition-colors duration-200 ease-out',
+              'type-label relative flex-1 rounded-lg px-4 py-2.5',
+              'transition-colors duration-[var(--duration-change)] ease-[var(--ease-change)]',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
               active ? 'text-fg' : 'text-fg-muted hover:text-fg',
             )}

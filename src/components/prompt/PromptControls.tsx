@@ -76,9 +76,15 @@ function HoldButton({
   )
 }
 
+/*
+ * `pressable` carries every transition on these buttons, so there is deliberately no
+ * `transition-opacity` here: that utility sets `transition-property: opacity` outright, and
+ * because utilities beat components it would replace the list `pressable` defines — the hover
+ * fade would survive and the press-scale would silently stop animating.
+ */
 const iconBtn =
-  'flex items-center justify-center rounded-full bg-surface/90 text-fg backdrop-blur ' +
-  'transition-opacity hover:opacity-80 active:opacity-70 ' +
+  'pressable flex items-center justify-center rounded-full bg-surface/90 text-fg backdrop-blur ' +
+  'hover:opacity-80 ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ' +
   'disabled:opacity-40 disabled:hover:opacity-40'
 
@@ -110,7 +116,7 @@ export function PromptControls({
       // is read as a tap on it — recentring whatever line is underneath, or, where no line is,
       // dismissing the chrome, which is this whole bug over again.
       className={cn(
-        'absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300',
+        'absolute bottom-10 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-[var(--duration-change)] ease-[var(--ease-change)]',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >
@@ -216,7 +222,7 @@ export function PromptControls({
       </div>
       {/* Size is always readable, speed only where there is one — the row itself is always
           rendered so the cluster does not change height when Smart Follow is switched on. */}
-      <div className="mt-3 text-center text-xs tracking-wide text-fg-muted tabular-nums">
+      <div className="type-numeral mt-3 text-center text-xs text-fg-muted">
         {showSpeed && <span>{speedMultiplier.toFixed(1)}×</span>}
         {showSpeed && <span className="px-2 opacity-50">·</span>}
         <span data-text-scale>{Math.round(textScale * 100)}%</span>
