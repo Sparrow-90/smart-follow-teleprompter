@@ -17,6 +17,12 @@
  * every far jump scores a perfect 0% runaway, and one that takes every far jump catches up
  * fastest.
  *
+ * The rates quoted here and in CLAUDE.md (48.6% before, 0.4% after) come from a DENSER sweep of
+ * the same replay — every 3rd position rather than every 97th, and seven threshold variants — which
+ * took minutes per variant. What runs below is that harness sized to a few seconds, so it reads 0%
+ * where the dense sweep read 0.4%: enough sampling to catch a regression, not enough to reproduce
+ * the third digit. The thresholds are set accordingly.
+ *
  * Deliberately NOT in `vercel-build`, unlike the other pure-Node drivers: `verify-lexicon` and
  * `verify-type-motion` read a file and match bytes, while a widened scan here is O(script) per
  * call. The run below is sized to a few seconds; the calibration sweep it came from took minutes

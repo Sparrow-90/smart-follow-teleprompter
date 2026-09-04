@@ -182,4 +182,18 @@ describe('matchPosition — a far jump needs real evidence (§30)', () => {
     expect(r.moved).toBe(true)
     expect(t[r.index].text).toBe('epsilon')
   })
+
+  // The evidence floor is absolute while a word's rarity is normalized by log(N), so a SHORT
+  // script is where a legitimate phrase could fall under it — the asymmetric failure direction.
+  // A twenty-word script with the presenter at the end, restarting from the top, is the smallest
+  // real case that still needs a widened search: `back` only reaches 8 words up.
+  it('still finds a restart from the top of a twenty-word script', () => {
+    const short = toks(
+      'dzisiaj premier przedstawil nowy program mieszkaniowy dla mlodych rodzin kraju ' +
+        'obnizenie kosztow wsparcie osob kupujacych pierwsze mieszkanie krytycy pytaja finansowany',
+    )
+    const r = matchPosition(short, short.length - 1, ['dzisiaj', 'premier', 'przedstawil'])
+    expect(r.moved).toBe(true)
+    expect(short[r.index].text).toBe('przedstawil')
+  })
 })
