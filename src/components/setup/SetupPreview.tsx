@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
-import type { PresetStyle } from '../../model/presets'
-import { change, travel, travelLarge } from '../../motion/tokens'
-import { FocusZone } from '../prompt/FocusZone'
-import { FOCUS_ANCHOR } from '../../smartfollow/positionMap'
+import { useLayoutEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import type { PresetStyle } from "../../model/presets";
+import { change, travel, travelLarge } from "../../motion/tokens";
+import { FocusZone } from "../prompt/FocusZone";
+import { FOCUS_ANCHOR } from "../../smartfollow/positionMap";
 
 interface SetupPreviewProps {
   /**
@@ -11,12 +11,12 @@ interface SetupPreviewProps {
    * i.e. the very object PromptScreen renders from. Anything less and the panel below is a
    * faithful miniature of a screen nobody has.
    */
-  preset: PresetStyle
-  presetLabel: string
-  mirror: boolean
-  readingMarker: boolean
+  preset: PresetStyle;
+  presetLabel: string;
+  mirror: boolean;
+  readingMarker: boolean;
   /** The viewport the preset was resolved against — the thing being scaled DOWN from. */
-  viewport: { width: number; height: number }
+  viewport: { width: number; height: number };
 }
 
 /**
@@ -28,7 +28,7 @@ interface SetupPreviewProps {
  * at Standard than the real screen did. A preview whose entire job is "what will my script look
  * like" was answering wrong. Scaled with everything else, it cannot drift again.
  */
-const PROMPT_PADDING_X = 24
+const PROMPT_PADDING_X = 24;
 
 /**
  * A static, non-scrolling preview of how the teleprompter will look with the chosen preset.
@@ -55,34 +55,50 @@ export function SetupPreview({
   readingMarker,
   viewport,
 }: SetupPreviewProps) {
-  const panelRef = useRef<HTMLDivElement>(null)
-  const [panel, setPanel] = useState({ width: 0, height: 0 })
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState({ width: 0, height: 0 });
 
   // The panel is sized by the Setup grid, so it has to be measured rather than assumed. Setup has
   // no per-frame work — unlike Prompt Mode, where this would be unthinkable — so a ResizeObserver
   // here costs nothing and keeps the replica true through a rotation or a window drag.
-  useEffect(() => {
-    const el = panelRef.current
-    if (!el) return
+  //
+  // useLayoutEffect, NOT useEffect, and measured: on `useEffect` the first paint happens before
+  // this runs, so the sample rendered once at scale 0 and Framer then animated it UP to size —
+  // ~200ms of half-size text growing into place every time Setup opened. The old code never showed
+  // that because PREVIEW_SCALE was a constant and needed no measurement. This is the same reason
+  // PromptScreen re-anchors in a layout effect: a measurement the first frame depends on has to
+  // land before that frame, not after it.
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
     const measure = () => {
-      const r = el.getBoundingClientRect()
-      setPanel({ width: r.width, height: r.height })
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+      const r = el.getBoundingClientRect();
+      setPanel({ width: r.width, height: r.height });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-  // Guard the first paint, before either measurement has landed: a scale of 0 would collapse the
-  // sample, and dividing by a zero viewport would make it Infinity.
+  /*
+   * 0 until both measurements land — and the sample is NOT RENDERED while it is, which is
+   * load-bearing rather than defensive.
+   *
+   * Measured: rendering it anyway let the first render establish a scale-0 baseline that Framer
+   * then animated away from, so the panel showed unstyled 16px text for ~300ms on every entry to
+   * Setup before growing to size. A layout effect alone does not fix that — it stops the browser
+   * PAINTING the unmeasured frame, but Framer has still seen two different targets and animates
+   * between them. Not mounting the subtree until the number is real is what removes the baseline;
+   * `initial={false}` below is what stops the first real value being treated as an entrance.
+   */
   const scale =
     panel.width > 0 && viewport.width > 0 && viewport.height > 0
       ? Math.min(panel.width / viewport.width, panel.height / viewport.height)
-      : 0
+      : 0;
 
-  const fontSize = preset.fontSize * scale
-  const lineHeightPx = fontSize * preset.lineHeight
+  const fontSize = preset.fontSize * scale;
+  const lineHeightPx = fontSize * preset.lineHeight;
 
   return (
     <div
@@ -94,6 +110,7 @@ export function SetupPreview({
     >
       <motion.div
         className="h-full"
+        initial={false}
         animate={{ scaleX: mirror ? -1 : 1 }}
         transition={{ scaleX: travelLarge }}
       >
@@ -104,32 +121,41 @@ export function SetupPreview({
           it the moment a paragraph wrapped to a different number of lines. Centring the block ON
           the anchor puts the emphasised middle paragraph where the presenter will actually read.
         */}
-        <motion.div
-          className="absolute inset-x-0"
-          style={{ top: `${FOCUS_ANCHOR * 100}%` }}
-          animate={{ fontSize, lineHeight: preset.lineHeight }}
-          // fontSize and lineHeight are layout properties rather than GPU-composited ones.
-          // Affordable here — three paragraphs in a fixed-size panel, nothing else reflows.
-          transition={{ fontSize: travel, lineHeight: travel }}
-        >
+        {scale > 0 && (
           <motion.div
-            data-preview-column
-            className="mx-auto -translate-y-1/2"
-            style={{ fontWeight: preset.fontWeight, letterSpacing: preset.letterSpacing }}
-            animate={{
-              maxWidth: preset.columnWidth * scale,
-              paddingLeft: PROMPT_PADDING_X * scale,
-              paddingRight: PROMPT_PADDING_X * scale,
-            }}
-            transition={travel}
+            className="absolute inset-x-0"
+            style={{ top: `${FOCUS_ANCHOR * 100}%` }}
+            initial={false}
+            animate={{ fontSize, lineHeight: preset.lineHeight }}
+            // fontSize and lineHeight are layout properties rather than GPU-composited ones.
+            // Affordable here — three paragraphs in a fixed-size panel, nothing else reflows.
+            transition={{ fontSize: travel, lineHeight: travel }}
           >
-            <p className="my-[0.45em] text-fg-muted">Dzień dobry.</p>
-            <p className="my-[0.45em]">
-              <strong>Witam Państwa</strong> w dzisiejszym wydaniu.
-            </p>
-            <p className="my-[0.45em] text-fg-muted">Zaczynamy od najważniejszych wydarzeń.</p>
+            <motion.div
+              data-preview-column
+              className="mx-auto -translate-y-1/2"
+              style={{
+                fontWeight: preset.fontWeight,
+                letterSpacing: preset.letterSpacing,
+              }}
+              initial={false}
+              animate={{
+                maxWidth: preset.columnWidth * scale,
+                paddingLeft: PROMPT_PADDING_X * scale,
+                paddingRight: PROMPT_PADDING_X * scale,
+              }}
+              transition={travel}
+            >
+              <p className="my-[0.45em] text-fg-muted">Dzień dobry.</p>
+              <p className="my-[0.45em]">
+                <strong>Witam Państwa</strong> w dzisiejszym wydaniu.
+              </p>
+              <p className="my-[0.45em] text-fg-muted">
+                Zaczynamy od najważniejszych wydarzeń.
+              </p>
+            </motion.div>
           </motion.div>
-        </motion.div>
+        )}
       </motion.div>
 
       {/*
@@ -151,10 +177,10 @@ export function SetupPreview({
           <motion.div
             aria-hidden
             className="pointer-events-none absolute left-4 z-20 text-fg-muted sm:left-8"
-            style={{ top: `${FOCUS_ANCHOR * 100}%`, fontSize: '1.5rem' }}
-            initial={{ opacity: 0, x: -4, y: '-50%' }}
-            animate={{ opacity: 1, x: 0, y: '-50%' }}
-            exit={{ opacity: 0, x: -4, y: '-50%' }}
+            style={{ top: `${FOCUS_ANCHOR * 100}%`, fontSize: "1.5rem" }}
+            initial={{ opacity: 0, x: -4, y: "-50%" }}
+            animate={{ opacity: 1, x: 0, y: "-50%" }}
+            exit={{ opacity: 0, x: -4, y: "-50%" }}
             transition={change}
           >
             ›
@@ -181,5 +207,5 @@ export function SetupPreview({
         {presetLabel} — Preview
       </span>
     </div>
-  )
+  );
 }
