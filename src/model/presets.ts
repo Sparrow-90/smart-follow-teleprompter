@@ -7,6 +7,27 @@ export interface PresetStyle {
   /** Text size in px (at the reference tablet viewport). */
   fontSize: number
   lineHeight: number
+  /**
+   * Display tracking, as an **em** value so it follows fontSize through applyTextScale and
+   * resolvePreset without either of them having to know about it.
+   *
+   * It is authored here rather than left to the font because Geist has no optical-size axis —
+   * `wght` 100–900 and nothing else — so one set of letterforms and one fit is all there is,
+   * drawn for text sizes. The script runs from 35px to 175px through those two functions, and a
+   * grotesque set at 0 tracking comes apart at the top of that range: the counters open up, the
+   * words stop holding together, and the line reads as a row of letters. Negative tracking is
+   * what a variable optical axis would have applied on its own.
+   *
+   * Proportionally tighter at the larger preset, which is the same reason display cuts exist:
+   * the correction is not linear in em, so a single value cannot serve 50px and 100px both.
+   */
+  letterSpacing: string
+  /**
+   * Weight of the script itself. Authored per preset for the same reason as the tracking: at
+   * Distance the glyphs are large enough that the extra weight only fills in the counters,
+   * while at Standard it is what keeps the text solid from across a room.
+   */
+  fontWeight: number
   /** Max column width in px. */
   columnWidth: number
   /** Base auto-scroll velocity in px/sec at speed multiplier 1. */
@@ -28,10 +49,21 @@ export const PRESETS: Record<Preset, PresetStyle> = {
   standard: {
     label: 'Standard',
     helper: 'The default for most setups.',
-    fontSize: 50,
+    // Raised from 50/940/65 by a single factor of 1.2, all three together.
+    //
+    // The column was 78.7% of the reference screen where Distance's is 95.5%, and measured with
+    // real prose the longest rendered line reached only 71.1% of the screen — a fifth of it went
+    // unused with no reason behind the number. Widening the column ALONE was the wrong repair:
+    // Standard already has the longest lines in the app at 17.84 em against Distance's 10.92, so
+    // that would have taken the worst reading measure here and stretched it further, which is the
+    // thing the note above warns about. Scaled together the column reaches 94.5% and the measure
+    // lands at 18.00 em — unmoved. See TEXT_SCALE_MIN in settings.ts, which had to follow.
+    fontSize: 60,
     lineHeight: 1.45,
-    columnWidth: 940,
-    baseSpeed: 65,
+    letterSpacing: '-0.018em',
+    fontWeight: 500,
+    columnWidth: 1128,
+    baseSpeed: 78,
   },
   distance: {
     label: 'Distance',
@@ -40,6 +72,8 @@ export const PRESETS: Record<Preset, PresetStyle> = {
     // is, so past ~110px the lines fall under three words each and read worse however large.
     fontSize: 100,
     lineHeight: 1.5,
+    letterSpacing: '-0.026em',
+    fontWeight: 450,
     columnWidth: 1140,
     baseSpeed: 118,
   },

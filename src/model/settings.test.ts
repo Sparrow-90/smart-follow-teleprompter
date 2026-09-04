@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   TEXT_SCALE_MAX,
   TEXT_SCALE_MIN,
+  TEXT_SCALE_STEP,
   defaultSettings,
   migrateSettings,
   type Settings,
@@ -26,10 +27,29 @@ describe('migrateSettings', () => {
     expect(migrated.textScale).toBe(TEXT_SCALE_MIN)
   })
 
-  it('gives a Close user back the font size they actually had', () => {
-    // The whole reason the floor is 0.68 — Close's 34px over Standard's 50px.
+  it('lands a Close user within a couple of px of the font size they actually had', () => {
+    /*
+     * This is what the floor is FOR, and it is a product of two numbers that move independently:
+     * the floor is a multiplier, Close's font was an absolute 34px, and Standard has since been
+     * raised 50 → 60 so its column fills the screen. Left alone, that alone would have handed a
+     * migrated presenter 40.8px.
+     *
+     * The floor came down to 0.60 to answer it, which lands at 36px — the nearest size ON the
+     * TEXT_SCALE_STEP dial, since the floor also has to be reachable by pressing A− rather than
+     * only by arriving there from disk. Asserting the window rather than one number is the honest
+     * form: it is the pair that has to stay in agreement, and either may be tuned on a device.
+     */
     const migrated = migrateSettings({ preset: 'close' })
-    expect(Math.round(PRESETS[migrated.preset].fontSize * migrated.textScale)).toBe(34)
+    const px = PRESETS[migrated.preset].fontSize * migrated.textScale
+    expect(px).toBeGreaterThanOrEqual(34)
+    expect(px).toBeLessThanOrEqual(38)
+  })
+
+  it('keeps the floor reachable in whole A− steps, not merely stored', () => {
+    // A floor off the step grid can be migrated INTO but never pressed down to, so a presenter
+    // who nudged the size once could not get back to it.
+    const steps = Math.round((1 - TEXT_SCALE_MIN) / TEXT_SCALE_STEP)
+    expect(1 - steps * TEXT_SCALE_STEP).toBeCloseTo(TEXT_SCALE_MIN, 10)
   })
 
   it('defaults the scale to exactly 1, so existing presets look identical', () => {

@@ -3,6 +3,7 @@ import { useStore } from '../state/store'
 import { PRESETS, resolvePreset } from '../model/presets'
 import { useSmoothFollow } from '../engine/useSmoothFollow'
 import { useWakeLock } from '../engine/useWakeLock'
+import { useViewportSize } from '../engine/useViewportSize'
 import { PromptText } from '../components/prompt/PromptText'
 import { FocusZone } from '../components/prompt/FocusZone'
 import { PromptControls } from '../components/prompt/PromptControls'
@@ -38,25 +39,6 @@ const VOICE_NUDGE_LINES = 2
  */
 const DEBUG_STT =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === 'stt'
-
-/** The live viewport, so preset sizes can be fitted to the screen the presenter is reading. */
-function useViewportSize() {
-  const [size, setSize] = useState(() => ({
-    width: typeof window === 'undefined' ? 0 : window.innerWidth,
-    height: typeof window === 'undefined' ? 0 : window.innerHeight,
-  }))
-  useEffect(() => {
-    const measure = () => setSize({ width: window.innerWidth, height: window.innerHeight })
-    measure() // an iPad rotated before this mounted would otherwise keep the stale size
-    window.addEventListener('resize', measure)
-    window.addEventListener('orientationchange', measure)
-    return () => {
-      window.removeEventListener('resize', measure)
-      window.removeEventListener('orientationchange', measure)
-    }
-  }, [])
-  return size
-}
 
 export function PromptScreen() {
   const scriptDoc = useStore((s) => s.scriptDoc)

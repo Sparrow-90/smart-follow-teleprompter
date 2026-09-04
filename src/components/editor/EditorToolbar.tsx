@@ -14,8 +14,8 @@ interface EditorToolbarProps {
 
 /** Shared button shape. `min-h-11` is the ~44pt touch minimum — the primary device is a tablet. */
 const button =
-  'relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-3 text-xs ' +
-  'font-medium tracking-wide uppercase transition-colors ' +
+  'type-label relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-3 ' +
+  'transition-colors ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
 const quiet = 'text-fg-muted hover:text-fg'

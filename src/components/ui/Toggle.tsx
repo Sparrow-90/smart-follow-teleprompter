@@ -41,7 +41,7 @@ export function Toggle({ checked, onChange, label, disabled, hint }: ToggleProps
       )}
     >
       <span className="flex items-baseline gap-3">
-        <span className="text-xs font-medium tracking-wide uppercase text-fg">{label}</span>
+        <span className="type-label text-fg">{label}</span>
         {hint && <span className="text-xs text-fg-muted">{hint}</span>}
       </span>
       <span className="relative inline-flex shrink-0">
