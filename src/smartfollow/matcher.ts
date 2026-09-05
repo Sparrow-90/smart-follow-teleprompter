@@ -42,12 +42,20 @@ export interface MatchOptions {
 
 /**
  * What a match from outside the local window must score, and how much rarity-weighted evidence it
- * must carry. Both measured (see `scripts/verify-false-jump.mjs`) on a 3,390-word script, replaying
- * the rolling window Vosk really emits: an eight-word off-script aside used to send the script
- * somewhere else in **48.6%** of runs — worst case 2,741 words — and these two take that to 0.4%
- * while a deliberate skip elsewhere still catches up 99.2% of the time (98.8% before).
+ * must carry. Measured by `scripts/verify-false-jump.mjs` on the 3,574-word PRD, replaying the
+ * rolling window Vosk really emits (the rates below come from that harness sampled densely — see
+ * its header):
  *
- * A stricter ratio is not free: 0.7 removes the last 0.4% and drops catch-up to 93.8%.
+ *   eight-word off-script aside          47.8% ran away  ->  0.4%   (worst jump 3,055 words)
+ *   the same aside heard as near-misses  42.9%           ->  1.2%
+ *   a single recognized word             48.8%           ->  0
+ *   a deliberate skip elsewhere          99.0% caught up  ->  99.0%, 0.4 of a word slower
+ *
+ * The two gates do different jobs, and the table is how you can tell: the RATIO is what turns the
+ * asides away, and the EVIDENCE floor is what stops one or two words crossing the document (it is
+ * why a one-word window cannot even reach the scan — one word cannot carry 1.6). Neither
+ * substitutes for the other, and a stricter ratio is not free: 0.7 removes the last 0.4% and drops
+ * catch-up to 93.8%.
  */
 const FAR_MIN_CONFIDENCE = 0.6
 const FAR_MIN_EVIDENCE = 1.6
@@ -118,15 +126,17 @@ export function matchPosition(
   // the presenter is looking, and drag, tap-to-jump and "klik akapit" are all still there.
   if (!options.localOnly && best.score < minConfidence) {
     const rarity = rarityIn(tokens)
-    // A window that could not clear the floor even matching every word perfectly is not worth
-    // scanning three thousand positions for. Costs nothing, and the widened scan is the expensive
-    // path — measured at 2.0ms per call over 3.4k words, on every Vosk partial, on a tablet.
-    const ceiling = recent.reduce((sum, w) => sum + rarity(w), 0)
-    if (ceiling >= farMinEvidence) {
+    // A window too short to clear the floor even matching the rarest words in the script is not
+    // worth scanning three thousand positions for. This bites for a ONE- or two-word window and
+    // nothing else — six words of anything clear it — which is exactly the case it is for: a
+    // window that short arrives after `resetWindow`, and it used to be enough to cross the whole
+    // document. The saved scan is a bonus, not the point (~2ms per call over 3.4k words, on every
+    // Vosk partial, on a tablet).
+    if (recent.length * rarity.max >= farMinEvidence) {
       const wide = consider(0, tokens.length - 1, { ...best })
       const start = Math.max(0, wide.p - recent.length + 1)
       const slice = tokens.slice(start, wide.p + 1).map((t) => t.text)
-      if (wide.score >= farMinConfidence && fuzzyLcs(recent, slice, rarity) >= farMinEvidence) {
+      if (wide.score >= farMinConfidence && fuzzyLcs(recent, slice, rarity.of) >= farMinEvidence) {
         best = wide
       }
     }
@@ -142,18 +152,33 @@ export function matchPosition(
 
 /**
  * Longest common subsequence using fuzzy word equality — length by default, or the summed
- * `weight` of the matched words of `a` when one is given (which then maximises weight rather
- * than count, exactly what "how much evidence is there" means).
+ * `weight` of the matched words when one is given, which then maximises weight rather than count.
+ *
+ * The weight is read from `script` (the second list), never from `heard`. `wordsMatch` is fuzzy on
+ * purpose — Polish inflects and Vosk returns near-misses — so a heard word routinely matches a
+ * script token without being that token, and weighing what was heard means weighing a string the
+ * script has never contained. Measured, that inverted the gate this weight exists for: the same
+ * aside in the script's own words was refused, and heard as near-misses it jumped 59 words.
+ *
+ * Taking the match unconditionally is correct only for unit weights, where
+ * `dp[i-1][j-1] + 1 ≥ max(dp[i-1][j], dp[i][j-1])` always holds. With uneven weights a later
+ * low-weight match can shadow an earlier high-weight one on the same script token, so the maximum
+ * is taken explicitly — under-counting evidence would refuse a far jump the presenter meant.
  */
-function fuzzyLcs(a: string[], b: string[], weight: (word: string) => number = () => 1): number {
-  const m = a.length
-  const n = b.length
+function fuzzyLcs(
+  heard: string[],
+  script: string[],
+  weight: (word: string) => number = () => 1,
+): number {
+  const m = heard.length
+  const n = script.length
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      dp[i][j] = wordsMatch(a[i - 1], b[j - 1])
-        ? dp[i - 1][j - 1] + weight(a[i - 1])
-        : Math.max(dp[i - 1][j], dp[i][j - 1])
+      const matched = wordsMatch(heard[i - 1], script[j - 1])
+        ? dp[i - 1][j - 1] + weight(script[j - 1])
+        : 0
+      dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1], matched)
     }
   }
   return dp[m][n]
@@ -163,9 +188,9 @@ function fuzzyLcs(a: string[], b: string[], weight: (word: string) => number = (
 const scriptCounts = new WeakMap<ScriptToken[], Map<string, number>>()
 
 /**
- * How much a word is worth as *evidence of position in this script*: 1 for one used once, ~0.46
- * for one used on every other line. A function word says nothing about where you are; a word that
- * appears once says everything. This is what lets a three-word distinctive phrase cross the whole
+ * How much a script word is worth as *evidence of position in this script*: at 3.4k words, ~0.92
+ * for one used once and ~0.46 for one used on every other line. A function word says nothing about
+ * where you are; a word that appears once says almost everything. This is what lets a three-word distinctive phrase cross the whole
  * document while six of the script's commonest words cannot — a plain "at least N words matched"
  * rule cannot tell those two apart, and refusing the first is a behaviour this repo already pins.
  *
@@ -176,17 +201,28 @@ const scriptCounts = new WeakMap<ScriptToken[], Map<string, number>>()
  * default" test is the canary for that. If it ever fails, scale the floor by what a typical
  * window carries in that script; do not lower the constant.
  */
-function rarityIn(tokens: ScriptToken[]): (word: string) => number {
+function rarityIn(tokens: ScriptToken[]): { of: (word: string) => number; max: number } {
   let counts = scriptCounts.get(tokens)
   if (!counts) {
     counts = new Map<string, number>()
     for (const t of tokens) counts.set(t.text, (counts.get(t.text) ?? 0) + 1)
     scriptCounts.set(tokens, counts)
   }
+  const seen = counts
   const n = Math.max(2, tokens.length) // log(1) = 0 would divide by zero on a one-word script
   const logN = Math.log(n)
-  const seen = counts
-  return (word) => Math.log(n / (1 + (seen.get(word) ?? 0))) / logN
+  const weigh = (count: number) => Math.log(n / (1 + count)) / logN
+  return {
+    // A word the script does not contain is worth nothing, not everything. It cannot be reached
+    // through `fuzzyLcs` any more, and a gate's default belongs on the refusing side.
+    of: (word) => {
+      const count = seen.get(word)
+      return count ? weigh(count) : 0
+    },
+    // What the rarest possible word is worth here — a word used once. The ceiling a window of
+    // this length could reach if every word of it landed on one.
+    max: weigh(1),
+  }
 }
 
 /** Exact match, or a close near-miss for longer words (tolerates STT/inflection noise). */

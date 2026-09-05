@@ -369,16 +369,26 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   320px/s cap, so the text scrolls upward on its own with nobody reading it. It stopped only when
   the presenter dragged it back, because dragging calls `reanchorTo`, which sets `localOnly` for
   2s — which is exactly why stopping it by hand and re-speaking "fixed" it, two or three times
-  over. Measured on the PRD as a 3,390-word script, replaying the rolling window `useVosk` really
-  emits: **48.6% of eight-word asides moved the script more than 50 words**, worst case 2,741.
-  A widened match now clears `FAR_MIN_CONFIDENCE` (0.6) **and** `FAR_MIN_EVIDENCE` (1.6), and
-  needing both is the whole design: a ratio cannot judge a SHORT window (one word that occurs
-  anywhere scores a perfect 1.0 — measured, one common word jumped 47.7% of windows), and a plain
-  "at least N words matched" floor breaks the three-word distinctive phrase that
-  `matcher.test.ts`'s "reaches a distant phrase by default" already pins — and measured, cost real
-  recovery (catch-up 98.8% → 94.2%). **Rarity is what separates those two cases when nothing else
-  does**: each matched word is weighed by `log(N / (1 + count)) / log(N)`, so a word used once
-  carries 1.0 and one used on every other line carries ~0.46. Note that denominator makes the
+  over. Measured on the PRD as a 3,574-word script, replaying the rolling window `useVosk` really
+  emits: **47.8% of eight-word asides moved the script more than 50 words** (worst 3,055), 42.9%
+  when the same aside is heard as near-misses, and 48.8% of single words — now 0.4% / 1.2% / 0,
+  with catch-up after a deliberate skip unchanged at 99.0% and 0.4 of a spoken word slower.
+  A widened match now clears `FAR_MIN_CONFIDENCE` (0.6) **and** `FAR_MIN_EVIDENCE` (1.6), and the
+  two do different jobs: the **ratio** turns the asides away, the **evidence floor** is what stops
+  one or two words crossing the document. A ratio cannot judge a SHORT window — one word that
+  matches anywhere scores a perfect 1.0 — and a plain "at least N words matched" floor breaks the
+  three-word distinctive phrase that `matcher.test.ts`'s "reaches a distant phrase by default"
+  already pins, and measured, cost real recovery (catch-up → 94.2%). **Rarity is what separates
+  those two cases when nothing else does**: each matched word is weighed by
+  `log(N / (1 + count)) / log(N)`, ~0.92 for a word used once and ~0.46 for one used on every
+  other line. **Weigh the SCRIPT word that matched, never the word that was heard** — `wordsMatch`
+  is fuzzy because Polish inflects and Vosk returns near-misses, so a heard word routinely matches
+  a script token without being it; looking THAT string up finds no count and scores it as the
+  rarest thing in the document, which inverts the gate. Measured, the same aside was refused in the
+  script's own words and jumped 59 words heard as near-misses. Note it moves none of the rates
+  above — the ratio turns those asides away first — so it is pinned by the exact/near-miss PAIR in
+  `matcher.test.ts`, not by the harness. That is the division of labour between the two kinds of
+  check here. Note the `log(N)` denominator makes the
   scale script-length-dependent while the floor is absolute; it is checked at 3,390 words and at
   78, and the failure direction is asymmetric — on a SHORT script a genuinely distinctive phrase
   scores lower and could be refused a jump the presenter wanted, which is why that test is the

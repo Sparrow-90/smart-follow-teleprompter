@@ -17,11 +17,17 @@
  * every far jump scores a perfect 0% runaway, and one that takes every far jump catches up
  * fastest.
  *
- * The rates quoted here and in CLAUDE.md (48.6% before, 0.4% after) come from a DENSER sweep of
- * the same replay — every 3rd position rather than every 97th, and seven threshold variants — which
- * took minutes per variant. What runs below is that harness sized to a few seconds, so it reads 0%
- * where the dense sweep read 0.4%: enough sampling to catch a regression, not enough to reproduce
- * the third digit. The thresholds are set accordingly.
+ * The rates quoted in `matcher.ts` and CLAUDE.md come from THIS harness sampled densely — replace
+ * the three `p +=` steps below with 13 / 17 / 11 and it reproduces them in a couple of minutes.
+ * What runs by default is the same replay sized to a few seconds, so it reads 0% where the dense
+ * run reads 0.4%: enough sampling to catch a regression, not enough to reproduce the third digit,
+ * and the thresholds are set accordingly.
+ *
+ * What this harness does NOT catch: which of the two gates is doing the work. Measured, weighing
+ * the evidence on the word HEARD instead of the script word it matched — a bug that let a near-miss
+ * aside jump 59 words in isolation — moves none of the numbers below, because the ratio gate turns
+ * those asides away first. That one is pinned by `matcher.test.ts`, and the division of labour is
+ * the reason both kinds of check exist.
  *
  * Deliberately NOT in `vercel-build`, unlike the other pure-Node drivers: `verify-lexicon` and
  * `verify-type-motion` read a file and match bytes, while a widened scan here is O(script) per
@@ -76,9 +82,26 @@ for (const t of tokens) counts.set(t.text, (counts.get(t.text) ?? 0) + 1)
 const commonest = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([w]) => w)
 
 console.log(`script: ${tokens.length} words, ${counts.size} distinct`)
+// The corpus is a living design doc, so the sampled positions shift when it is edited — that is
+// tolerable, a corpus that has shrunk to a toy is not: every rate below would pass for free.
+check(tokens.length > 3000, 'the corpus is still a long script', `${tokens.length} words`)
 
 // --- 1. the bug: the presenter says eight words that are not in the script here --------------
-{
+//
+// Run twice, and the second run is not decoration. Polish inflects and Vosk returns near-misses,
+// so what reaches the matcher is rarely the script's own spelling — and a gate that judges the
+// word HEARD rather than the script word it landed on reads a near-miss as the rarest thing in
+// the document and lets exactly this aside through. Measured, that inverted the whole gate: the
+// aside in the script's own words was refused and the same aside misheard jumped the script.
+// An aside in perfect script spelling is the case that does not happen; it must not be the only
+// case tested.
+const nearMiss = (word) =>
+  word.length > 5 && rng() < 0.6 ? `${word.slice(0, -1)}${'aeiouy'[Math.floor(rng() * 6)]}` : word
+
+for (const [label, heard] of [
+  ['an off-script aside', (w) => w],
+  ['the same aside heard as near-misses', nearMiss],
+]) {
   let runs = 0
   let ranAway = 0
   let worst = 0
@@ -86,7 +109,7 @@ console.log(`script: ${tokens.length} words, ${counts.size} distinct`)
     let window = tokens.slice(p - 7, p + 1).map((t) => t.text)
     let cur = p
     for (let k = 0; k < 8; k++) {
-      window = [...window.slice(1), pick(commonest)]
+      window = [...window.slice(1), heard(pick(commonest))]
       const r = matchPosition(tokens, cur, window)
       if (r.confidence >= 0.45) cur = r.index // the gate useSmartFollow applies
       worst = Math.max(worst, Math.abs(cur - p))
@@ -97,8 +120,8 @@ console.log(`script: ${tokens.length} words, ${counts.size} distinct`)
   const rate = (100 * ranAway) / runs
   check(
     rate <= 5,
-    'an off-script aside leaves the script where the presenter is',
-    `${rate.toFixed(1)}% of ${runs} asides moved it more than ${FAR} words (was 48.6%), worst ${worst}`,
+    `${label} leaves the script where the presenter is`,
+    `${rate.toFixed(1)}% of ${runs} asides moved it more than ${FAR} words, worst ${worst}`,
   )
 }
 
@@ -130,7 +153,7 @@ console.log(`script: ${tokens.length} words, ${counts.size} distinct`)
   check(
     rate >= 95,
     'a deliberate skip elsewhere in the script is still found',
-    `caught up in ${rate.toFixed(1)}% of ${runs} skips (was 98.8%)` +
+    `caught up in ${rate.toFixed(1)}% of ${runs} skips (99.0% with the gates off)` +
       (caught ? `, after ${(words / caught).toFixed(1)} words` : ''),
   )
 }
@@ -147,7 +170,7 @@ console.log(`script: ${tokens.length} words, ${counts.size} distinct`)
   check(
     moved === 0,
     'a single recognized word never crosses the script',
-    `${moved} of ${runs} (was ~48%)`,
+    `${moved} of ${runs} (48.8% with the gates off)`,
   )
 }
 

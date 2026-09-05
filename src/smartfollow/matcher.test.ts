@@ -183,6 +183,34 @@ describe('matchPosition — a far jump needs real evidence (§30)', () => {
     expect(t[r.index].text).toBe('epsilon')
   })
 
+  // What the presenter says and what the script says are not the same string — Polish inflects,
+  // and Vosk returns near-misses ("finansowani" for "finansowanie") that `wordsMatch` is built to
+  // accept. So the evidence has to be weighed on the SCRIPT word that was matched, never on the
+  // recognized one: a recognized word absent from the script has no count, and scoring it as the
+  // rarest thing in the document made the floor fail open on exactly the input it exists to judge.
+  // Same words, same alignment, same ratio — the two forms must reach the same answer.
+  describe('weighs the script word that matched, not the word that was heard', () => {
+    // The presenter is 60 words of unique text in; the four ordinary words are repeated forty
+    // times each, far below, where only a widened search can reach them.
+    const common = ['finansowanie', 'projektu', 'rozwoju', 'spolki']
+    const repeated = toks(
+      Array.from({ length: 60 }, (_, i) => `wstep${i}`).join(' ') +
+        ' ' +
+        Array.from({ length: 40 }, (_, i) => `unikat${i} ${common.join(' ')} slowo${i} inne${i}`).join(' '),
+    )
+
+    it('refuses the aside in the script\'s own words', () => {
+      const r = matchPosition(repeated, 5, [...common, 'czegos', 'tam'])
+      expect(r.moved).toBe(false)
+    })
+
+    it('refuses the same aside heard as near-misses', () => {
+      const heard = ['finansowani', 'projekty', 'rozwoja', 'spolkim', 'czegos', 'tam']
+      const r = matchPosition(repeated, 5, heard)
+      expect(r.moved).toBe(false)
+    })
+  })
+
   // The evidence floor is absolute while a word's rarity is normalized by log(N), so a SHORT
   // script is where a legitimate phrase could fall under it — the asymmetric failure direction.
   // A twenty-word script with the presenter at the end, restarting from the top, is the smallest
