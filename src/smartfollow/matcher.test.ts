@@ -144,3 +144,84 @@ describe('matchPosition — localOnly (manual re-anchor guard)', () => {
     expect(r.confidence).toBeGreaterThan(0.75)
   })
 })
+
+describe('matchPosition — a far jump needs real evidence (§30)', () => {
+  // The presenter is at the top. Sixty words of padding push the rest of the script outside the
+  // forward window (40), so nothing below can be reached except by widening the search.
+  const t = toks(
+    'alfa beta gamma delta epsilon zeta ' +
+      Array.from({ length: 60 }, (_, i) => `wypelniacz${i}`).join(' ') +
+      ' pierwszy raport zaczyna sie teraz nadchodzi',
+  )
+
+  it('holds position when only half the phrase lines up far away', () => {
+    // "raport … sie … nadchodzi" — three of six, in order: exactly the chance alignment an
+    // off-script sentence or a garbled patch of recognition produces somewhere in a long script.
+    // It scores 0.5, which clears the local bar and used to move the presenter 68 words down.
+    const r = matchPosition(t, 3, ['raport', 'wczoraj', 'sie', 'okazalo', 'nadchodzi', 'burza'])
+    expect(r.moved).toBe(false)
+    expect(r.index).toBe(3)
+  })
+
+  it('still reaches that phrase when the whole of it lines up', () => {
+    const r = matchPosition(t, 3, ['pierwszy', 'raport', 'zaczyna', 'sie', 'teraz', 'nadchodzi'])
+    expect(r.moved).toBe(true)
+    expect(t[r.index].text).toBe('nadchodzi')
+  })
+
+  it('never crosses the script on a single word, however well it matches', () => {
+    // One word scores a perfect 1.0 wherever it occurs, so no ratio can refuse it — the evidence
+    // floor is the only thing that can, and one word can never carry enough of it.
+    const r = matchPosition(t, 3, ['nadchodzi'])
+    expect(r.moved).toBe(false)
+    expect(r.index).toBe(3)
+  })
+
+  it('still tracks inside the local window on a single word', () => {
+    const r = matchPosition(t, 3, ['epsilon'])
+    expect(r.moved).toBe(true)
+    expect(t[r.index].text).toBe('epsilon')
+  })
+
+  // What the presenter says and what the script says are not the same string — Polish inflects,
+  // and Vosk returns near-misses ("finansowani" for "finansowanie") that `wordsMatch` is built to
+  // accept. So the evidence has to be weighed on the SCRIPT word that was matched, never on the
+  // recognized one: a recognized word absent from the script has no count, and scoring it as the
+  // rarest thing in the document made the floor fail open on exactly the input it exists to judge.
+  // Same words, same alignment, same ratio — the two forms must reach the same answer.
+  describe('weighs the script word that matched, not the word that was heard', () => {
+    // The presenter is 60 words of unique text in; the four ordinary words are repeated forty
+    // times each, far below, where only a widened search can reach them.
+    const common = ['finansowanie', 'projektu', 'rozwoju', 'spolki']
+    const repeated = toks(
+      Array.from({ length: 60 }, (_, i) => `wstep${i}`).join(' ') +
+        ' ' +
+        Array.from({ length: 40 }, (_, i) => `unikat${i} ${common.join(' ')} slowo${i} inne${i}`).join(' '),
+    )
+
+    it('refuses the aside in the script\'s own words', () => {
+      const r = matchPosition(repeated, 5, [...common, 'czegos', 'tam'])
+      expect(r.moved).toBe(false)
+    })
+
+    it('refuses the same aside heard as near-misses', () => {
+      const heard = ['finansowani', 'projekty', 'rozwoja', 'spolkim', 'czegos', 'tam']
+      const r = matchPosition(repeated, 5, heard)
+      expect(r.moved).toBe(false)
+    })
+  })
+
+  // The evidence floor is absolute while a word's rarity is normalized by log(N), so a SHORT
+  // script is where a legitimate phrase could fall under it — the asymmetric failure direction.
+  // A twenty-word script with the presenter at the end, restarting from the top, is the smallest
+  // real case that still needs a widened search: `back` only reaches 8 words up.
+  it('still finds a restart from the top of a twenty-word script', () => {
+    const short = toks(
+      'dzisiaj premier przedstawil nowy program mieszkaniowy dla mlodych rodzin kraju ' +
+        'obnizenie kosztow wsparcie osob kupujacych pierwsze mieszkanie krytycy pytaja finansowany',
+    )
+    const r = matchPosition(short, short.length - 1, ['dzisiaj', 'premier', 'przedstawil'])
+    expect(r.moved).toBe(true)
+    expect(short[r.index].text).toBe('przedstawil')
+  })
+})

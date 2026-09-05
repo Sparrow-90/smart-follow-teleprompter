@@ -32,6 +32,9 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   vocabulary now reaches Prompt Mode. Deliberately NOT a colour or depth pass — the brief was
   typography and motion, monochrome kept. **The preset sizes still want a device check** (see the
   gotcha below): `fontSize: 50 / 100` were measured against Inter's x-height, not Geist's.
+- **False-jump fix — shipped** (branch `smart-follow-false-jumps`). Smart Follow used to send a
+  long script scrolling off on its own; the widened search now needs evidence a local match does
+  not. See the gotcha below — and note the crawl a *correct* far jump makes is still open.
 - **Paragraph markers — shipped** (branch `paragraph-markers`). A `section` block the presenter
   places (or that a reflowed PDF paste places for them), rendered as a numbered rule, with
   **"Klik akapit" / "Click paragraph"** jumping BACK a paragraph. Recovery, not navigation.
@@ -356,6 +359,50 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   presets.** It used to hardcode `fontSize * 1.5` — Distance's value — which is the entire reason
   Standard (1.45) was never checked there. Anything that retunes a `lineHeight` would have failed
   it for the right reason with a misleading message.
+- **A far match needs evidence a local one does not — this is what stopped the script running
+  away.** `matchPosition` widens its search to the WHOLE script when the local window looks
+  unconvincing, and it used to accept whatever came back on the same bar the local search uses
+  (`minConfidence` 0.4). On a long script that bar is a chance event: six ordinary words carrying
+  no evidence — an off-script aside, a garbled patch of recognition, another voice over the mic —
+  line up three-of-six *somewhere* in three thousand and score exactly 0.5. `wordProgressTarget`
+  then measures that word's rect hundreds of screens away and follow mode chases it at its
+  320px/s cap, so the text scrolls upward on its own with nobody reading it. It stopped only when
+  the presenter dragged it back, because dragging calls `reanchorTo`, which sets `localOnly` for
+  2s — which is exactly why stopping it by hand and re-speaking "fixed" it, two or three times
+  over. Measured on the PRD as a 3,574-word script, replaying the rolling window `useVosk` really
+  emits: **47.8% of eight-word asides moved the script more than 50 words** (worst 3,055), 42.9%
+  when the same aside is heard as near-misses, and 48.8% of single words — now 0.4% / 1.2% / 0,
+  with catch-up after a deliberate skip unchanged at 99.0% and 0.4 of a spoken word slower.
+  A widened match now clears `FAR_MIN_CONFIDENCE` (0.6) **and** `FAR_MIN_EVIDENCE` (1.6), and the
+  two do different jobs: the **ratio** turns the asides away, the **evidence floor** is what stops
+  one or two words crossing the document. A ratio cannot judge a SHORT window — one word that
+  matches anywhere scores a perfect 1.0 — and a plain "at least N words matched" floor breaks the
+  three-word distinctive phrase that `matcher.test.ts`'s "reaches a distant phrase by default"
+  already pins, and measured, cost real recovery (catch-up → 94.2%). **Rarity is what separates
+  those two cases when nothing else does**: each matched word is weighed by
+  `log(N / (1 + count)) / log(N)`, ~0.92 for a word used once and ~0.46 for one used on every
+  other line. **Weigh the SCRIPT word that matched, never the word that was heard** — `wordsMatch`
+  is fuzzy because Polish inflects and Vosk returns near-misses, so a heard word routinely matches
+  a script token without being it; looking THAT string up finds no count and scores it as the
+  rarest thing in the document, which inverts the gate. Measured, the same aside was refused in the
+  script's own words and jumped 59 words heard as near-misses. Note it moves none of the rates
+  above — the ratio turns those asides away first — so it is pinned by the exact/near-miss PAIR in
+  `matcher.test.ts`, not by the harness. That is the division of labour between the two kinds of
+  check here. Note the `log(N)` denominator makes the
+  scale script-length-dependent while the floor is absolute; it is checked at 3,390 words and at
+  78, and the failure direction is asymmetric — on a SHORT script a genuinely distinctive phrase
+  scores lower and could be refused a jump the presenter wanted, which is why that test is the
+  canary and must keep passing untouched. The local search, the score and `MatchResult.confidence`
+  are deliberately UNCHANGED: confidence feeds the status chip (0.6/0.4), `useSmartFollow`'s 0.45
+  move gate and the deadband, so re-scaling it would change what the chip says during normal
+  reading for no gain here. The early bail — a window that cannot reach the floor matching
+  perfectly never scans the script at all — is correctness and frame budget out of one branch
+  (the widened scan costs ~2ms per call at 3.4k words, on every Vosk partial, on a tablet).
+  `verify-false-jump.mjs` pins it as a **rate**, which is what the bug was, and pins both halves
+  together: a matcher that refuses every far jump scores a perfect 0% runaway, and one that takes
+  every far jump catches up fastest. Both halves were checked by making them fail.
+  Still open, deliberately: a *correct* far jump still travels at 320px/s, so a genuine skip
+  across the script takes seconds to arrive.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -456,6 +503,9 @@ node scripts/verify-type-motion.mjs # one motion vocabulary + one label style ac
                                 # boundary (no server needed)
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
+node scripts/verify-false-jump.mjs # weak evidence never sends the script somewhere the presenter
+                                # is not, and strong evidence still does (no server; ~5s, so
+                                # unlike verify-lexicon it does NOT ride in vercel-build)
 ```
 
 **Debugging what the recognizer actually heard:** open the app with `?debug=stt` and enter
@@ -472,5 +522,7 @@ reason, though the two features are independent. Paragraph markers are also **un
 `resumePhraseFor` advertises only the resume phrase, so nothing tells a presenter the command
 exists; that needs a place to list commands, which is its own piece of work. Then Phase 4
 device optimization on a real installed PWA. Still open: caching the 40–50MB models for true offline
-Smart Follow, VAD gate, latency tuning, more languages.
+Smart Follow, VAD gate, latency tuning, more languages — and the **crawl a correct far jump makes**
+(320px/s to a target that may be a whole script away), left alone deliberately when the false jumps
+were fixed, on the reasoning that a jump the presenter meant lands where they wanted to be.
 See `docs`/PRD §63–74 and the memory notes for history.
