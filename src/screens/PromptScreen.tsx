@@ -11,7 +11,11 @@ import { PromptChrome } from '../components/prompt/PromptChrome'
 import { useSmartFollow } from '../smartfollow/useSmartFollow'
 import type { VoskErrorKind } from '../smartfollow/useVosk'
 import { TEXT_SCALE_STEP, clampTextScale, TEXT_SCALE_MIN, TEXT_SCALE_MAX } from '../model/settings'
-import { resumePhraseFor, type VoiceCommand } from '../smartfollow/voiceCommands'
+import {
+  resumePhraseFor,
+  VOICE_NUDGE_LINES,
+  type VoiceCommand,
+} from '../smartfollow/voiceCommands'
 import {
   FOCUS_ANCHOR,
   wordIndexAtAnchor,
@@ -26,8 +30,6 @@ const MIN_SPEED = 0.4
 const MAX_SPEED = 3.0
 const SPEED_STEP = 0.2
 const HIDE_DELAY = 3500
-/** Lines a spoken command moves. More than the button — see the command handler for why. */
-const VOICE_NUDGE_LINES = 2
 
 /**
  * Speech readout, opened with ?debug=stt. Shows what the recognizer ACTUALLY returned, which is

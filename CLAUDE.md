@@ -35,6 +35,10 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
 - **False-jump fix — shipped** (branch `smart-follow-false-jumps`). Smart Follow used to send a
   long script scrolling off on its own; the widened search now needs evidence a local match does
   not. See the gotcha below — and note the crawl a *correct* far jump makes is still open.
+- **Command discoverability — shipped** (branch `voice-command-discoverability`). A collapsed
+  **Voice commands** row in Setup, under the Language selector. Collapsed it still teaches the wake
+  word (`Klik…` / `Click…`, which swaps with the language); expanded it lists all four phrases and
+  what they do. Setup-only by decision — the mid-take case is left open, see the roadmap.
 - **Paragraph markers — shipped** (branch `paragraph-markers`). A `section` block the presenter
   places (or that a reflowed PDF paste places for them), rendered as a numbered rule, with
   **"Klik akapit" / "Click paragraph"** jumping BACK a paragraph. Recovery, not navigation.
@@ -116,6 +120,43 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   `[unk]` is **mandatory**: without it every utterance is force-fit to the nearest phrase and
   reading the script aloud fires commands continuously. Never mix languages in one grammar — every
   word must be in the loaded model's lexicon. `verify-grammar.mjs` pins all of this.
+- **The grammar array IS the presenter-facing copy.** Setup's Voice commands row renders
+  `voiceCommandHelpFor`, which is the same array `commandGrammarFor` builds the recognizer from —
+  derived, not written beside it. That direction is the point: a phrase outside the grammar
+  physically cannot be returned, so a hand-written list could teach a command the app can never
+  obey, silently, and only in whichever language's model happened to load. The cost is that editing
+  `COMMAND_PHRASES` edits UI text.
+  **The chain into the build had a hole, and closing it took a source read.** `verify-lexicon.mjs`
+  keeps the phrase list as a LITERAL (node cannot import a `.ts`) and checks that literal against
+  the model lexicons — so nothing in `vercel-build` tied it to `COMMAND_PHRASES`, and
+  `vercel-build` runs `build`, not `vitest`. A typo in the table would have shipped green with only
+  a unit test objecting. It now also reads `voiceCommands.ts` and asserts that `COMMAND_PHRASES`
+  walked in `GRAMMAR_ORDER` rebuilds that literal exactly — the same assert-across-a-boundary trick
+  `verify-type-motion.mjs` uses for the `change` curve, and it runs before the models-missing SKIP
+  because it needs no models. Checked by breaking it three ways (a typo, a reorder, and a command
+  dropped from `GRAMMAR_ORDER`). That last one is its own hole: the two Records are keyed by
+  `VoiceCommand`, so a fifth command is a type error there — but `GRAMMAR_ORDER` is a plain array,
+  and a command missing from it type-checks and is then simply absent from the grammar, so the
+  recognizer can never return it and the row never shows it. The script compares the order against
+  the table's keys rather than its length, because `length === 4` would have read as confirmation
+  while the command went missing.
+  **The `meaning` strings are the one thing no check can reach**, and one shipped wrong: the tests
+  pin phrase→command and that a meaning is non-empty, never meaning→behaviour. `paragraphBack` was
+  described as "back one paragraph", but `previousParagraphIndex` returns the top of the paragraph
+  the presenter is ALREADY IN unless they are within `toleranceWords` of it — so the first say
+  restarts this beat and only the second steps back. Read that function before touching this copy.
+  Two orders exist on purpose:
+  `GRAMMAR_ORDER` is what the recognizer gets and is load-bearing, because `verify-lexicon.mjs`
+  and `verify-grammar.mjs` both keep the phrase list as a literal (node cannot import a `.ts`), so
+  reordering it fails them for a reason nobody touched; `VOICE_COMMAND_DISPLAY_ORDER` is what reads
+  well. `VOICE_NUDGE_LINES` moved here from `PromptScreen` for the same
+  one-source reason — a **spoken** nudge moves 2 lines where the button moves 1, so a row saying
+  "back one line" would have been wrong copy describing real behaviour. The row's open state is
+  local to the component and deliberately NOT persisted: `AnimatePresence` unmounts it when Smart
+  Follow goes off, which is what resets it — hoisted into `SetupScreen` it would survive the toggle
+  and reappear already open. Note the browser check must WAIT for that unmount rather than sleep:
+  `travel` is a spring and settles well past its `visualDuration`, and a fixed delay reported the
+  row as still present.
 - **A paragraph marker is a `section` BLOCK, and it is not called `paragraph`.** Every `text` block
   already renders as a `<p data-prompter-line>`, so naming the marker `paragraph` would make the
   block union unreadable — the model says `section`, the UI says "paragraph marker". It mirrors
@@ -518,9 +559,10 @@ this is the only way to see what comes back instead.
 
 PRD Phase 3's last item: **PAUSE behaviour** for Smart Follow (see the gotcha above). Note that
 paragraph markers made `tokenizeScript`'s skipping of non-text blocks load-bearing for a second
-reason, though the two features are independent. Paragraph markers are also **undiscoverable** —
-`resumePhraseFor` advertises only the resume phrase, so nothing tells a presenter the command
-exists; that needs a place to list commands, which is its own piece of work. Then Phase 4
+reason, though the two features are independent. The commands now have a place to be listed
+(Setup's Voice commands row), so paragraph markers are no longer undiscoverable at a desk — but
+**in-the-moment recall is still open**: a presenter who freezes mid-take has nothing in front of
+them, and a list skimmed before a take does not survive two minutes into one. Then Phase 4
 device optimization on a real installed PWA. Still open: caching the 40–50MB models for true offline
 Smart Follow, VAD gate, latency tuning, more languages — and the **crawl a correct far jump makes**
 (320px/s to a target that may be a whole script away), left alone deliberately when the false jumps

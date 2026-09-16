@@ -103,15 +103,6 @@ export function detectCommand(recent: string[]): VoiceCommand | null {
   return COMMAND_VERBS[verb] ?? null
 }
 
-/**
- * The resume phrase to SHOW the presenter for a given recognition language. Detection itself
- * accepts both vocabularies regardless; this only picks which one is worth advertising, because
- * the other one physically cannot be recognized by the loaded model.
- */
-export function resumePhraseFor(lang: string): string {
-  return lang.startsWith('pl') ? 'Klik start' : 'Click go'
-}
-
 // --- grammar-constrained recognition ---------------------------------------
 
 /**
@@ -123,6 +114,131 @@ export function resumePhraseFor(lang: string): string {
  * to say "that wasn't a command". With it, ordinary speech returns [unk] and is discarded.
  */
 export const GRAMMAR_UNKNOWN = '[unk]'
+
+// --- what the presenter is shown -------------------------------------------
+
+/**
+ * Lines a SPOKEN nudge moves — deliberately more than the on-screen button, which moves one.
+ * A finger can press twice; a voice cannot without saying the whole phrase again, and a command
+ * is a recovery tool, so it should arrive somewhere useful in one go.
+ *
+ * It lives here rather than in PromptScreen because it is a fact about what a command DOES, and
+ * the row in Setup has to describe it in the presenter's words. Two places saying "2" is how the
+ * description ends up outliving the behaviour.
+ */
+export const VOICE_NUDGE_LINES = 2
+
+/** One command, as the presenter is shown it. */
+export interface VoiceCommandHelp {
+  command: VoiceCommand
+  /** Exactly the phrase the grammar recognizer may return — lowercase, diacritics intact. */
+  phrase: string
+  /** What it does, in the presenter's words. */
+  meaning: string
+}
+
+/**
+ * What each command does. English for both languages: the app has no i18n layer, every other
+ * string in the UI is an English literal, and it is the PHRASE that has to be in the presenter's
+ * language, not the gloss beside it.
+ *
+ * `Record<VoiceCommand, string>` rather than a list, so adding a fifth command and forgetting to
+ * describe it is a type error rather than a row the presenter never hears about — which is the
+ * exact bug this whole surface exists to fix.
+ */
+const COMMAND_MEANINGS: Record<VoiceCommand, string> = {
+  back: `back ${VOICE_NUDGE_LINES} lines`,
+  forward: `forward ${VOICE_NUDGE_LINES} lines`,
+  resume: 'resume following',
+  // The two-stage behaviour is the half nobody would guess, and it is easy to describe wrongly:
+  // `previousParagraphIndex` returns the top of the paragraph the presenter is ALREADY IN unless
+  // they are within `toleranceWords` of it, so the first say restarts this beat and only the
+  // second steps back. "back one paragraph" would send someone fumbling mid-paragraph one further
+  // back than they meant.
+  paragraphBack: 'back to the start of this paragraph — again for the one before',
+}
+
+/**
+ * The phrases themselves. This table is not documentation ABOUT the grammar; it IS the grammar —
+ * `commandGrammarFor` builds the recognizer's list from it, `resumePhraseFor` reads the status
+ * chip's copy out of it, and Setup's Voice commands row renders it.
+ *
+ * That direction is the whole point. A phrase outside the grammar physically cannot be returned by
+ * the recognizer, so a list written BESIDE it could teach the presenter a command the app can never
+ * obey — silently, and only in whichever language's model happens to be loaded. Derived, that
+ * cannot happen. The cost is that an edit here changes UI COPY as well as what is listened for;
+ * `verify-lexicon.mjs` checks every phrase against the model that has to hear it, and runs in
+ * `vercel-build`, so the row's claims are build-checked for free.
+ */
+const COMMAND_PHRASES: Record<'pl' | 'en', Record<VoiceCommand, string>> = {
+  pl: { back: 'klik góra', forward: 'klik dół', resume: 'klik start', paragraphBack: 'klik akapit' },
+  en: {
+    back: 'click up',
+    forward: 'click down',
+    resume: 'click go',
+    paragraphBack: 'click paragraph',
+  },
+}
+
+const phrasesFor = (lang: string) => COMMAND_PHRASES[lang.startsWith('pl') ? 'pl' : 'en']
+
+/**
+ * The order the GRAMMAR is built in. Load-bearing: `verify-lexicon.mjs` and `verify-grammar.mjs`
+ * both keep the phrase list as a literal, because node cannot import a `.ts`, so reordering here
+ * fails them for a reason nobody touched.
+ */
+const GRAMMAR_ORDER: VoiceCommand[] = ['back', 'forward', 'resume', 'paragraphBack']
+
+/**
+ * The order the presenter READS them in — the two line nudges together, the paragraph jump beside
+ * them, and resume last because it is the odd one out. A separate array from `GRAMMAR_ORDER` on
+ * purpose: reading order and recognizer order answer to different things, and pinning them to each
+ * other would mean one of the two is always wrong.
+ */
+export const VOICE_COMMAND_DISPLAY_ORDER: VoiceCommand[] = [
+  'back',
+  'forward',
+  'paragraphBack',
+  'resume',
+]
+
+/** Every command, in grammar order, for the language whose model is loaded. */
+export function voiceCommandHelpFor(lang: string): VoiceCommandHelp[] {
+  const phrases = phrasesFor(lang)
+  return GRAMMAR_ORDER.map((command) => ({
+    command,
+    phrase: phrases[command],
+    meaning: COMMAND_MEANINGS[command],
+  }))
+}
+
+/**
+ * A phrase as it is WRITTEN to the presenter. `phrase` stays the recognizer's exact lowercase
+ * truth; the capital is a display rule, and it lives in one place so the chip and the Setup row
+ * cannot disagree about it.
+ */
+export function displayPhrase(phrase: string): string {
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1)
+}
+
+/**
+ * The resume phrase to SHOW the presenter for a given recognition language. Detection itself
+ * accepts both vocabularies regardless; this only picks which one is worth advertising, because
+ * the other one physically cannot be recognized by the loaded model.
+ */
+export function resumePhraseFor(lang: string): string {
+  return displayPhrase(phrasesFor(lang).resume)
+}
+
+/**
+ * The wake word alone, for the collapsed Voice commands row: `Klik…` / `Click…`.
+ *
+ * Read off a phrase rather than typed, so the row cannot name a wake word the grammar does not
+ * actually begin with. Every phrase in a language shares it, so any of them will do.
+ */
+export function wakeWordHintFor(lang: string): string {
+  return `${displayPhrase(phrasesFor(lang).resume.replace(/ .*/, ''))}…`
+}
 
 /**
  * The phrases a command recognizer is allowed to return, for one language.
@@ -145,8 +261,5 @@ export const GRAMMAR_UNKNOWN = '[unk]'
  * That script also fails the build if any word here is missing from its model.
  */
 export function commandGrammarFor(lang: string): string[] {
-  const phrases = lang.startsWith('pl')
-    ? ['klik góra', 'klik dół', 'klik start', 'klik akapit']
-    : ['click up', 'click down', 'click go', 'click paragraph']
-  return [...phrases, GRAMMAR_UNKNOWN]
+  return [...voiceCommandHelpFor(lang).map((c) => c.phrase), GRAMMAR_UNKNOWN]
 }

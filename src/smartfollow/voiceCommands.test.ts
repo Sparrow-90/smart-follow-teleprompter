@@ -6,6 +6,11 @@ import {
   GRAMMAR_UNKNOWN,
   WAKE_WORDS,
   COMMAND_VERBS,
+  VOICE_COMMAND_DISPLAY_ORDER,
+  voiceCommandHelpFor,
+  wakeWordHintFor,
+  resumePhraseFor,
+  type VoiceCommand,
 } from './voiceCommands'
 
 describe('voiceCommands — the tables', () => {
@@ -173,5 +178,104 @@ describe('voiceCommands — the grammar', () => {
   it('treats an unknown result as no command', () => {
     expect(detectCommand(tokenizePhrase(GRAMMAR_UNKNOWN))).toBeNull()
     expect(detectCommand(tokenizePhrase(''))).toBeNull()
+  })
+})
+
+/*
+ * The presenter has to be told these phrases somewhere, and the only safe source is the array the
+ * recognizer is built from: a phrase outside the grammar physically cannot be returned, so a
+ * hand-written list would be able to teach a command the app can never obey. These tests pin the
+ * derivation rather than the copy — the copy itself is checked against the models' lexicons by
+ * verify-lexicon.mjs, which now covers the UI's claims for free.
+ */
+describe('voiceCommands — what the presenter is shown', () => {
+  /*
+   * Written as a Record, not an array, so it is the TYPE that keeps this list honest: a fifth
+   * member of `VoiceCommand` makes this object fail to compile, which forces it in here, which in
+   * turn makes the coverage and permutation checks below actually mean something. As a plain
+   * array it would silently keep testing four commands out of five.
+   */
+  const EVERY_COMMAND: Record<VoiceCommand, true> = {
+    back: true,
+    forward: true,
+    resume: true,
+    paragraphBack: true,
+  }
+  const ALL_COMMANDS = Object.keys(EVERY_COMMAND) as VoiceCommand[]
+  const LANGS = ['pl-PL', 'en-US']
+
+  it('leaves the grammar byte-identical after being derived from the help table', () => {
+    // The two verify scripts keep this array as a literal, because node cannot import the .ts.
+    // If the refactor reorders or respells one phrase they start failing for a reason nobody
+    // touched — so the order is part of the contract, not an accident.
+    expect(commandGrammarFor('pl-PL')).toEqual([
+      'klik góra',
+      'klik dół',
+      'klik start',
+      'klik akapit',
+      GRAMMAR_UNKNOWN,
+    ])
+    expect(commandGrammarFor('en-US')).toEqual([
+      'click up',
+      'click down',
+      'click go',
+      'click paragraph',
+      GRAMMAR_UNKNOWN,
+    ])
+  })
+
+  it('never advertises a phrase the recognizer cannot return', () => {
+    // The whole reason the help table exists. Both directions: nothing shown that cannot be
+    // heard, and nothing hearable left undocumented.
+    for (const lang of LANGS) {
+      const spoken = commandGrammarFor(lang).filter((p) => p !== GRAMMAR_UNKNOWN)
+      const shown = voiceCommandHelpFor(lang).map((e) => e.phrase)
+      expect([...shown].sort()).toEqual([...spoken].sort())
+    }
+  })
+
+  it('reads every advertised phrase back as the command it claims to be', () => {
+    // Pins the meaning to the right command: a row that says "klik akapit — forward one line"
+    // would pass every other check here.
+    for (const lang of LANGS) {
+      for (const entry of voiceCommandHelpFor(lang)) {
+        expect(detectCommand(tokenizePhrase(entry.phrase))).toBe(entry.command)
+      }
+    }
+  })
+
+  it('documents every command, in both languages', () => {
+    // Adding a fifth command and forgetting to describe it fails here rather than shipping a
+    // command nothing tells the presenter about — which is the bug this whole feature exists for.
+    for (const lang of LANGS) {
+      const help = voiceCommandHelpFor(lang)
+      expect([...help.map((e) => e.command)].sort()).toEqual([...ALL_COMMANDS].sort())
+      for (const entry of help) expect(entry.meaning.trim()).not.toBe('')
+    }
+  })
+
+  it('lists the commands in reading order, losing none', () => {
+    // Reading order and grammar order are different concerns — the two line nudges belong
+    // together and resume is the odd one out — but the display order may not drop a command.
+    expect([...VOICE_COMMAND_DISPLAY_ORDER].sort()).toEqual([...ALL_COMMANDS].sort())
+    expect(new Set(VOICE_COMMAND_DISPLAY_ORDER).size).toBe(VOICE_COMMAND_DISPLAY_ORDER.length)
+  })
+
+  it('still advertises the resume phrase the status chip has always shown', () => {
+    // PromptScreen interpolates this into `Paused — say "…"`, so the capitalization is part of it.
+    expect(resumePhraseFor('pl-PL')).toBe('Klik start')
+    expect(resumePhraseFor('en-US')).toBe('Click go')
+  })
+
+  it('takes the wake-word hint from the phrases themselves', () => {
+    expect(wakeWordHintFor('pl-PL')).toBe('Klik…')
+    expect(wakeWordHintFor('en-US')).toBe('Click…')
+    // Derived, never typed: the collapsed row cannot name a wake word the grammar does not use.
+    for (const lang of LANGS) {
+      const stem = wakeWordHintFor(lang).replace('…', '').toLowerCase()
+      for (const entry of voiceCommandHelpFor(lang)) {
+        expect(entry.phrase.split(' ')[0]).toBe(stem)
+      }
+    }
   })
 })
