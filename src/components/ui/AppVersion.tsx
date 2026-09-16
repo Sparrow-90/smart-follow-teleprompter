@@ -14,6 +14,13 @@ const REVEAL_MS = 6000
  * seven characters of noise on a byline, so it lives one tap away rather than on the surface.
  * A tap rather than a `title` tooltip because the devices this is FOR are tablets, which have no
  * hover.
+ *
+ * READ IT ON THE SECOND RELOAD, not the first. Measured against a real service worker (build,
+ * `vite preview`, bump, rebuild, reload): the first reload after a deploy still shows the PREVIOUS
+ * version, and the new one appears on the reload after that. That is `registerType: 'autoUpdate'`
+ * working as designed — the worker fetches the new shell in the background while serving the
+ * cached one, so the page you are looking at genuinely IS the old build. The number is not lying;
+ * it is reporting the shell that rendered it, which is the only honest thing it could report.
  */
 export function AppVersion() {
   const [open, setOpen] = useState(false)

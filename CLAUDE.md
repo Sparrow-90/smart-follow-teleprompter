@@ -481,6 +481,16 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   and `git rev-parse` is only the local fallback. That config is also the vitest config, so the
   globals resolve under jsdom and the component cannot crash there — `AppVersion.test.tsx` asserts
   against the **imported** constants, never a literal SHA, which would pass on one machine only.
+  **The readout is true on the SECOND reload, and this is the thing to know before trusting it.**
+  Measured against a real service worker (build → `vite preview` → bump → rebuild → reload): reload
+  1 still shows the PREVIOUS version, reload 2 shows the new one. That is `autoUpdate` working as
+  designed — the worker serves the cached shell while fetching the new one in the background — so
+  the number is not lying, it is reporting the shell that actually rendered it. But it means "I
+  deployed and the tablet still says v0.2.0" is expected once, and only a *second* stale reading is
+  evidence of anything. Nothing in `src/` can shorten this today: there is no `virtual:pwa-register`
+  and no `onNeedRefresh`, which is the same gap that makes the version worth having. A refresh
+  prompt (or `skipWaiting` + `clients.claim` surfaced in the UI) is the fix if one-reload truth is
+  ever wanted; it is deliberately not in scope here.
 - **No icon library, and the obvious one cannot do the job anyway.** Lucide 1.0 (June 2026) removed
   every brand icon over trademark pressure and its migration guide points at Simple Icons;
   `react-icons` is a large dependency for two glyphs in a repo where bundle discipline is already
@@ -618,7 +628,10 @@ node scripts/verify-type-motion.mjs # one motion vocabulary + one label style ac
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
 node scripts/verify-colophon.mjs # the colophon does not move the logo's measured 4px gap, and its
-                                # two links do not overlap each other's tap target
+                                # two links do not overlap each other's tap target. Needs a dev
+                                # server, so like verify-preset-size it cannot ride in
+                                # `vercel-build`. RUN IT after touching the Editor header, the
+                                # byline, or anything that changes a line-height near them.
 node scripts/verify-false-jump.mjs # weak evidence never sends the script somewhere the presenter
                                 # is not, and strong evidence still does (no server; ~5s, so
                                 # unlike verify-lexicon it does NOT ride in vercel-build)

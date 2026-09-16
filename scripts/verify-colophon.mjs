@@ -32,9 +32,12 @@ const CAP_TOP = 6
 const FIGMA_GAP = 4
 
 /**
- * Read from source rather than repeated. The offset is the whole subject of this check, so a copy
- * of it here would be one more place for it to drift from — and the one place the check could not
- * notice.
+ * Read from source rather than repeated, and then ACTUALLY COMPARED — the offset is the subject of
+ * this check, so reading it only to print it in a failure message would look like a guard without
+ * being one. The three numbers above are one equation: the row's top sits OFFSET above the mark's
+ * bottom, the cap is CAP_TOP below the row's top, and what is left is Figma's gap. So the authored
+ * offset must be ROW_HEIGHT − CAP_TOP − FIGMA_GAP exactly, and the browser measurement below is
+ * the independent confirmation that the DOM agrees with the arithmetic.
  */
 const editor = readFileSync('src/screens/EditorScreen.tsx', 'utf8')
 const offsetMatch = editor.match(/data-colophon[^>]*?-mt-\[(\d+)px\]|-mt-\[(\d+)px\][^>]*?data-colophon/)
@@ -47,10 +50,16 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures++
 }
 
+check(
+  OFFSET === CAP_TOP - FIGMA_GAP,
+  `the authored row offset is what Urbanist's metrics require`,
+  `-${OFFSET}px, expected -${CAP_TOP - FIGMA_GAP}px (cap top ${CAP_TOP} − Figma's ${FIGMA_GAP})`,
+)
+
 const measure = (p) =>
   p.evaluate(() => {
     const row = document.querySelector('[data-colophon]')
-    const mark = document.querySelector('svg[role="img"]')
+    const mark = document.querySelector('header svg[role="img"]')
     const links = [...document.querySelectorAll('[data-colophon] a')]
     const version = document.querySelector('[data-colophon] button')
     if (!row || !mark || !version) return null
@@ -204,7 +213,7 @@ for (const viewport of [
       links: [...row.querySelectorAll('a')].filter(visible).length,
       version: visible(row.querySelector('button')),
       rowWidth: +row.getBoundingClientRect().width.toFixed(1),
-      markWidth: +document.querySelector('svg[role="img"]').getBoundingClientRect().width.toFixed(1),
+      markWidth: +document.querySelector('header svg[role="img"]').getBoundingClientRect().width.toFixed(1),
     }
   })
 
