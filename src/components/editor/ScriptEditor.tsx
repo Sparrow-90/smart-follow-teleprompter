@@ -207,7 +207,7 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
         data-placeholder="Paste or start typing…"
         onInput={handleInput}
         onPaste={handlePaste}
-        className="script-editor h-full w-full resize-none overflow-y-auto text-2xl leading-relaxed text-fg outline-none"
+        className="script-editor h-full w-full resize-none overflow-y-auto pt-[var(--editor-chrome-h)] text-2xl leading-relaxed text-fg outline-none"
       />
     )
   },

@@ -52,6 +52,10 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   `v0.2.0 · dc4f857 · 16 Sept 2026`. The version is bumped **by hand in the feature PR**; the commit
   SHA is injected by the build. No icon library. Hovering a link takes the **byline's lime** — the
   first time that colour is used for anything but the byline. See the gotchas below for all four.
+- **Frosted-glass Editor header — shipped** (same branch). The header now OVERLAYS the script so
+  text slides under it, tinted `bg-bg/68` with `backdrop-blur-xl`. Getting it to do anything at all
+  was a layout change, not a style one — see the gotcha below, and note the **iPad Safari check is
+  owed**.
 
 ## Stack
 
@@ -535,6 +539,59 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   only non-neutral in the app, and CTAs remain `--color-accent` (plain fg/bg inversion), so the
   monochrome direction holds — but a future "make hover lime everywhere" is now a much shorter
   argument than it was, and that is a direction decision rather than a styling one.
+- **A `backdrop-filter` needs something BEHIND it, and this header had nothing.** The Editor header
+  sets no background of its own; what paints behind it is `App.tsx`'s `absolute inset-0 bg-bg`
+  screen panel, a flat fill. And nothing ever crossed that fill: the scrollbar is on the
+  contenteditable itself (`ScriptEditor`, `h-full … overflow-y-auto`) and `<main>` carried `mt-8`,
+  so the scroll viewport began 32px BELOW the header and clipped there. Blurring a flat colour
+  returns that colour — the effect would have been invisible while still costing a compositor layer
+  on the target budget Android tablet. So the header is now `absolute` over the editor and the
+  script passes under it. `verify-glass.mjs` pins this as its FIRST assertion (the sampled backdrop
+  must differ from `--color-bg`); put the header back in flow and it reports **delta 0.0**, which is
+  exactly what the naive version would have shipped, passing every contrast check beautifully for
+  the wrong reason.
+  Two geometry notes. The bar hangs off the **screen root**, not the `max-w-5xl` column, because an
+  absolutely positioned element's containing block is the nearest positioned ancestor's PADDING
+  box — inside the `px-6` wrapper it would start 24px in and then inset its own content a second
+  24px past the script's; an inner `max-w-5xl` div puts the content back on the script's column.
+  And the root needed `relative` so it, not App's animated panel, is that containing block.
+  `ScriptEditor` pays exactly one class for all this (`pt-[var(--editor-chrome-h)]`): moving the
+  scrollbar to a wrapper instead — the shape SetupScreen uses — would have cost `h-full`, which is
+  what makes the whole empty area clickable to focus the editor.
+- **`--editor-chrome-h` is MEASURED, and the header's height is set by the toolbar, not the lockup.**
+  The header is `items-center`, so its height is whichever child is taller — the EditorToolbar at
+  54px (bordered, ~44pt targets), not the 37px lockup. Deriving it from the lockup gives 68px and is
+  wrong by 23. It is `20 (pt-5) + 54 + 16 (pb-4) + 1 (border) = 91`, and `verify-glass.mjs` measures
+  the rendered header against the token because nothing at runtime can notice the two drifting —
+  the same situation as `lineHeightPx` and the `change` curve.
+- **Glass contrast has TWO floors, and more blur makes contrast WORSE.** Measured, per pixel, against
+  the real backdrop: wordmark and toolbar glyphs clear **4.5:1**, the byline only **4.0:1**. The
+  byline is the binding case and in LIGHT theme, not dark — lime-700 is 4.99:1 on flat white (half a
+  point of headroom, see the byline gotcha above) and blurred dark script DARKENS that backdrop,
+  taking it to **4.38:1**. A blanket 4.5 floor would have failed there, and the only way to pass it
+  is a tint approaching opaque — i.e. shipping a nearly solid bar while calling it glass. The byline
+  is decorative and this repo already shipped it at 4.09:1 by explicit argument, so 4.0 is the floor
+  it actually has rather than a new rule smuggled in under an effect.
+  **The check measures the WORST patch (5th percentile), never the mean** — that was measured too: a
+  mean backdrop washes out hot spots and scored the byline 14:1 while it sat visibly across one
+  bright blurred word. The 5th percentile rather than the raw minimum because a single antialiased
+  pixel at a glyph edge is not what anyone reads.
+  **And the intuitive lever is backwards**: raising the blur LOWERS contrast, because it spreads ink
+  into a wider dimmed region rather than leaving clean gaps between strokes. Measured on the byline:
+  `blur-xl` 4.38 → `blur-2xl` 4.04 → `blur-3xl` 3.78 (fails). `blur-xl` at 68% is the best point
+  tested on BOTH axes — it has the strongest show-through (channel delta 9.0) and ties the best
+  contrast; `blur-2xl` at 80% matches the contrast with half the visible effect. Tune the tint, not
+  the blur.
+  `bg-bg/95` is written before the `supports-[backdrop-filter]:bg-bg/68` for a real reason: with no
+  blur support the tint carries all the contrast alone, and the target is a budget Android tablet.
+  **Owed: an iPad Safari check.** Chromium does not reproduce iOS Safari's scroll-time
+  `backdrop-filter` behaviour (stale or one-frame-late blur over a scrolling area), and iPad Safari
+  is the primary device — the same class of owed answer as the preset sizes. Chromium showed no
+  flicker through an Editor→Setup→Editor transition, which was the other risk (App's screen panel
+  animates `x`/`opacity` and is this header's backdrop root).
+  Deliberately NOT extended to `components/prompt/`: its chrome auto-hides and it is the one screen
+  where a compositor layer costs the presenter something. This lands on the writing screen, off the
+  reading-critical path, which is the whole argument for accepting the blur at all.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -635,6 +692,9 @@ node scripts/verify-type-motion.mjs # one motion vocabulary + one label style ac
                                 # boundary (no server needed)
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
+node scripts/verify-glass.mjs # the Editor header's glass is REAL (text actually passes behind it)
+                                # and every element in it stays legible — worst-case contrast, both
+                                # themes. Needs a dev server.
 node scripts/verify-colophon.mjs # the colophon hangs centred under the CTA at every width, its two
                                 # links do not overlap, hover matches the byline, and the logo's
                                 # measured 4px gap is untouched. Needs a dev
