@@ -7,6 +7,8 @@ import { ScriptEditor, type ScriptEditorHandle } from '../components/editor/Scri
 import { EditorToolbar } from '../components/editor/EditorToolbar'
 import { Wordmark } from '../components/ui/Wordmark'
 import { CtaButton } from '../components/ui/CtaButton'
+import { SocialLinks } from '../components/ui/SocialLinks'
+import { AppVersion } from '../components/ui/AppVersion'
 
 export function EditorScreen() {
   const setScriptDoc = useStore((s) => s.setScriptDoc)
@@ -47,9 +49,37 @@ export function EditorScreen() {
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col">
-      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-6 pt-5 sm:px-10">
-        <header className="flex shrink-0 items-center justify-between gap-4">
+    <div className="relative flex h-[100dvh] flex-col">
+      {/* THE GLASS BAR.
+
+          It hangs off the SCREEN ROOT rather than the max-width column, and that is geometry
+          rather than preference: an absolutely positioned element's containing block is the
+          nearest positioned ancestor's PADDING box, so `inset-x-0` inside the `px-6` wrapper below
+          would start 24px in and then inset its own content a second 24px past the script's. Out
+          here the panel is genuinely full-bleed and the inner `max-w-5xl` div puts its content on
+          exactly the script's column. `relative` on the root is what makes this the containing
+          block instead of App.tsx's animated screen panel.
+
+          It OVERLAYS the editor, which is the whole point: `backdrop-filter` blurs what is painted
+          behind an element, and until this moved out of flow nothing ever was. The scrollbar is on
+          the contenteditable itself and `<main>` carried `mt-8`, so the scroll viewport began 32px
+          BELOW the header and clipped there — a blur of the flat page fill returns the flat page
+          fill. Now the script slides under the glass and there is something to blur.
+          `ScriptEditor` pays for this with one padding class (`--editor-chrome-h`), nothing more:
+          moving the scrollbar to a wrapper instead would have cost `h-full`, which is what makes
+          the whole empty area clickable to focus the editor.
+
+          `bg-bg/95` FIRST and the blur tint second — without `backdrop-filter` support the tint has
+          to carry all of the contrast on its own, and the target here is a budget Android tablet.
+          The `supports-[backdrop-filter]` variant covers the -webkit- spelling too, which is not
+          obvious from the source and matters on older iPad Safari: Tailwind v4 emits the gate as
+          `@supports ((-webkit-backdrop-filter: var(--tw)) or (backdrop-filter: var(--tw)))`, so a
+          prefix-only engine still takes the 68% tint rather than getting the blur AND the opaque
+          fallback. Verified in the built CSS, not assumed.
+          No bare `transition-*` utility: `@layer base` gives `body *` a transition-property list for
+          the theme cross-fade and that property is REPLACED, never merged (see index.css). */}
+      <header className="absolute inset-x-0 top-0 z-10 border-b border-border/50 bg-bg/95 backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-bg/68">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 pt-5 pb-4 sm:px-10">
         {/* The lockup, matched to Figma node 4771:414: a 168x19 mark over the byline, 4px apart,
             both flush LEFT. Figma's frame is `items-start` and the byline (163px) is narrower than
             the mark (168px), so centring it — which is what this did while the mark carried its
@@ -80,9 +110,11 @@ export function EditorScreen() {
           onPause={() => editorRef.current?.insertPause()}
           onSection={() => editorRef.current?.insertSection()}
         />
+        </div>
       </header>
 
-        <main className="mt-8 min-h-0 flex-1">
+      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-6 sm:px-10">
+        <main className="min-h-0 flex-1">
           <ScriptEditor
             ref={editorRef}
             initialDoc={initialDocRef.current}
@@ -118,6 +150,27 @@ export function EditorScreen() {
         <CtaButton disabled={empty} onClick={() => goTo('setup')}>
           Continue
         </CtaButton>
+        {/* THE COLOPHON — the author's accounts and which build this is.
+
+            In the footer rather than beside the byline, and it buys two things that placement
+            could not. It no longer shares a line with the byline, so the -2px above (measured off
+            Urbanist's metrics to buy Figma's 4px mark-to-cap gap) is back on the span where
+            nothing can disturb it — the LOCKUP is untouched. (The header around it is not: the
+            glass work made it an absolutely positioned panel with an inner max-width wrapper.)
+            And the full width
+            under a full-width CTA means it fits at EVERY viewport: on the byline it needed 290px
+            against a 390px header's 342px, which forced it to hide below `sm`. Nothing hides here.
+
+            `justify-center` under a full-width button is the conventional footer treatment, and
+            unlike the header's centre — where the same group floated between the lockup and the
+            toolbar with no relationship to either — this one is anchored to the CTA above it. */}
+        <div data-colophon className="mt-4 flex items-center justify-center gap-3">
+          <SocialLinks />
+          <span aria-hidden className="text-[10px] leading-5 text-fg-faint">
+            ·
+          </span>
+          <AppVersion />
+        </div>
       </footer>
     </div>
   )

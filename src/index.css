@@ -69,6 +69,20 @@
    * repaints every colour on the screen at once, where `change` moves one control.
    */
   --duration-theme: 250ms;
+
+  /*
+   * The Editor header's rendered height, and the distance ScriptEditor pads its first line past.
+   * The header OVERLAYS the editor so script text can slide under the glass, so these two numbers
+   * have to agree and nothing at runtime can notice them drifting — the same situation as
+   * lineHeightPx and the `change` curve, and handled the same way: `verify-glass.mjs` measures the
+   * real header against this value.
+   *
+   * MEASURED, not derived. The header is `items-center`, so its height is set by whichever of the
+   * lockup and the toolbar is taller — and it is the TOOLBAR (54px, bordered with ~44pt targets),
+   * not the 37px lockup. Deriving it from the lockup gives 68px and is wrong by 23.
+   * 20 (pt-5) + 54 (toolbar) + 16 (pb-4) + 1 (border) = 91.
+   */
+  --editor-chrome-h: 91px;
 }
 
 /* Expose the semantic tokens to Tailwind utilities (bg-bg, text-fg, border-border, …). */

@@ -47,6 +47,15 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   repo. What changed is the styling — the mirrored **reflection is gone** (the mark is 168x19, the
   lockup 30px rather than 49), the lockup is flush LEFT, and the byline is **lime**. That lime is
   the app's first non-neutral colour and it is a token, not a literal — see the gotcha below.
+- **Colophon: build version + author's accounts — shipped** (branch `app-version-and-social-links`).
+  `⌾ ⌾ · v0.2.0` centred under the Editor's **Continue** button, the version opening on a tap to
+  `v0.2.0 · dc4f857 · 16 Sept 2026`. The version is bumped **by hand in the feature PR**; the commit
+  SHA is injected by the build. No icon library. Hovering a link takes the **byline's lime** — the
+  first time that colour is used for anything but the byline. See the gotchas below for all four.
+- **Frosted-glass Editor header — shipped** (same branch). The header now OVERLAYS the script so
+  text slides under it, tinted `bg-bg/68` with `backdrop-blur-xl`. Getting it to do anything at all
+  was a layout change, not a style one — see the gotcha below, and note the **iPad Safari check is
+  owed**.
 
 ## Stack
 
@@ -459,6 +468,45 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   ramp that clears 4.5:1 at 10px. Figma authored the lockup on the dark canvas only (the mark path
   fills `white`) and publishes no light variant, so the light value is this repo's, not the
   design's; it is the thing to re-check if the brand ever specifies one.
+- **The version is bumped BY HAND, and that is the honest option rather than the lazy one.** The
+  ask was "a counter that updates whenever a new feature is added," and nothing can detect a
+  feature: a commit count or SHA increments on typo fixes and README edits, and auto-semver
+  (semantic-release, changesets) needs Conventional Commits, which this repo deliberately does not
+  use — its log is prose. What makes the manual bump work is that this repo ships **one feature per
+  PR**, so the bump *is* the feature signal. Bump `package.json` in the feature PR; that is now part
+  of the convention. The **SHA answers the half the version cannot**: fixes ship between feature
+  bumps and the version does not move on those deploys, which are exactly the ones where "did the
+  tablet update?" is being asked. Why any of it is worth having: `registerType: 'autoUpdate'` with
+  **no refresh-prompt UI anywhere in `src/`** (no `virtual:pwa-register`, no `onNeedRefresh`) means
+  updates land silently, and the target devices are an iPad and a budget Android tablet with no
+  devtools to attach. Both values arrive through `define` in `vite.config.ts` → `src/buildInfo.ts`,
+  never an `import` of `package.json` (that would bundle the whole file) and never a runtime git
+  read: **`vercel-build` runs from a clean, SHALLOW clone**, so `VERCEL_GIT_COMMIT_SHA` is preferred
+  and `git rev-parse` is only the local fallback. That config is also the vitest config, so the
+  globals resolve under jsdom and the component cannot crash there — `AppVersion.test.tsx` asserts
+  against the **imported** constants, never a literal SHA, which would pass on one machine only.
+  **The readout is true on the SECOND reload, and this is the thing to know before trusting it.**
+  Measured against a real service worker (build → `vite preview` → bump → rebuild → reload): reload
+  1 still shows the PREVIOUS version, reload 2 shows the new one. That is `autoUpdate` working as
+  designed — the worker serves the cached shell while fetching the new one in the background — so
+  the number is not lying, it is reporting the shell that actually rendered it. But it means "I
+  deployed and the tablet still says v0.2.0" is expected once, and only a *second* stale reading is
+  evidence of anything. Nothing in `src/` can shorten this today: there is no `virtual:pwa-register`
+  and no `onNeedRefresh`, which is the same gap that makes the version worth having. A refresh
+  prompt (or `skipWaiting` + `clients.claim` surfaced in the UI) is the fix if one-reload truth is
+  ever wanted; it is deliberately not in scope here.
+- **No icon library, and the obvious one cannot do the job anyway.** Lucide 1.0 (June 2026) removed
+  every brand icon over trademark pressure and its migration guide points at Simple Icons;
+  `react-icons` is a large dependency for two glyphs in a repo where bundle discipline is already
+  load-bearing (vosk is dynamically imported precisely to stay under workbox's 2MB precache limit).
+  This repo has **zero icon dependencies** — every icon is a hand-inlined 24×24 SVG. `SocialLinks`
+  adds two more as an array, so a third link is one line. They are **solid** (`fill`) where the
+  app's own icons are hairlines (`stroke`), which is correct rather than sloppy: a brand mark must
+  not be redrawn as a stroke, and solid reads better at 14px. `gap-3` between them is a
+  **measurement, not spacing taste** — `-m-1.5 p-1.5` grows each 14px mark to a 26px tap target
+  while leaving its layout box at 14px, so the boxes overhang 6px each way and `gap-2` would have
+  them fight over a 4px strip. A tap landing there opens whichever link won, and a tap that opens
+  the **wrong account** is worse than one that misses.
 - **The byline's 4px gap is bought with a measured `-2px`, NOT with `text-box-trim`.** Figma trims
   the text box to cap height — its text node is 7px tall, not 20 — so its 4px is mark-bottom to
   CAP-top, and a naive `gap-1` under a 10/20 line box renders ~10px instead. Urbanist is ascent
@@ -469,6 +517,104 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   iPad and a **budget Android tablet** — the one place a desktop-Chrome eyeball would have passed a
   layout that is wrong on the real device. Font metrics belong to the font, so the -2px holds in
   every browser; it is tied to Urbanist at 10/20 and must be re-measured if any of the three move.
+  Still true, and still load-bearing, after the colophon moved to the footer: that move exists
+  partly so this stays the ONLY thing deciding the byline's position. `verify-colophon.mjs` now
+  carries the arithmetic as executable constants, but the two things a check cannot hold — why
+  `text-box-trim` was rejected, and the instruction to re-measure — live here.
+- **The colophon is in the FOOTER, and the two placements it is not are the interesting part.**
+  It began on the byline row — semantically the best home, since the author's marks belong beside
+  the author's name — and measurement killed it: the row wants 290px and EditorToolbar 215px
+  against the 342px a 390px header has, so the byline wrapped to three lines and the extras had to
+  hide below `sm`. It was then tried CENTRED in the header, which fails for a reason a screenshot
+  shows faster than prose: geometrically centred between a left lockup and a right toolbar, the
+  group reads as a third navigation item with no relationship to either, and dead centre is the
+  most prominent spot in a header after the logo — the opposite of subtle. It also needs absolute
+  positioning to centre against unequal side columns, and an absolutely-positioned element does
+  not push, so at narrow widths it would silently overlap rather than squeeze.
+  The footer buys both things back. `justify-center` under a **full-width** CTA is anchored to
+  something, and the full width means it fits at **every** viewport — nothing hides at 390px. And
+  because it no longer shares a line with the byline, the `-mt-[2px]` that buys Figma's 4px
+  mark-to-cap gap is back on the span where nothing can disturb it. Scope that claim to the
+  LOCKUP: the colophon move left the header markup alone, but the glass work then rebuilt it as an
+  absolutely positioned panel with an inner max-width wrapper.
+  `verify-colophon.mjs` still checks that gap — not because this branch moves it, but so the
+  byline-row placement cannot be quietly re-attempted. **Measuring it turns on one property**: an
+  inline element's `getBoundingClientRect()` ignores `line-height` and returns the font-metrics
+  content area, which would put the cap 2px below the rect instead of 6 — but the byline is a FLEX
+  ITEM, blockified, so its rect IS its line box. That is a layout fact rather than a constant, so
+  the check asserts the rect is exactly one line box tall *before* using it; restructure the header
+  so the span is genuinely inline and that fires first, naming the reason, instead of the gap
+  reading 4px off while everything else passes.
+- **Hover on the colophon is the byline's lime, and that widens what the colour means.**
+  `hover:text-byline` rather than `hover:text-fg`, so it resolves through the same token and swaps
+  per theme (lime-300 dark, lime-700 light) — `verify-colophon.mjs` asserts the hovered link's
+  computed colour equals the byline's rather than pinning a hex, which is what stops the two
+  drifting. Worth knowing what it changes: `--color-byline` was introduced as *the byline's*
+  colour, and it is now also the app's interactive-accent colour in the Editor. It is still the
+  only non-neutral in the app, and CTAs remain `--color-accent` (plain fg/bg inversion), so the
+  monochrome direction holds — but a future "make hover lime everywhere" is now a much shorter
+  argument than it was, and that is a direction decision rather than a styling one.
+- **A `backdrop-filter` needs something BEHIND it, and this header had nothing.** The Editor header
+  sets no background of its own; what paints behind it is `App.tsx`'s `absolute inset-0 bg-bg`
+  screen panel, a flat fill. And nothing ever crossed that fill: the scrollbar is on the
+  contenteditable itself (`ScriptEditor`, `h-full … overflow-y-auto`) and `<main>` carried `mt-8`,
+  so the scroll viewport began 32px BELOW the header and clipped there. Blurring a flat colour
+  returns that colour — the effect would have been invisible while still costing a compositor layer
+  on the target budget Android tablet. So the header is now `absolute` over the editor and the
+  script passes under it. `verify-glass.mjs` pins this as its FIRST assertion (the sampled backdrop
+  must differ from `--color-bg`); put the header back in flow and it reports **delta 0.0**, which is
+  exactly what the naive version would have shipped, passing every contrast check beautifully for
+  the wrong reason.
+  Two geometry notes. The bar hangs off the **screen root**, not the `max-w-5xl` column, because an
+  absolutely positioned element's containing block is the nearest positioned ancestor's PADDING
+  box — inside the `px-6` wrapper it would start 24px in and then inset its own content a second
+  24px past the script's; an inner `max-w-5xl` div puts the content back on the script's column.
+  And the root needed `relative` so it, not App's animated panel, is that containing block.
+  `ScriptEditor` pays exactly one class for all this (`pt-[var(--editor-chrome-h)]`): moving the
+  scrollbar to a wrapper instead — the shape SetupScreen uses — would have cost `h-full`, which is
+  what makes the whole empty area clickable to focus the editor.
+- **An overlaid header needs `scroll-padding-top`, or the caret hides behind it.** `pt-` spaces the
+  FIRST line past the glass and protects nothing after it: the header is `absolute` over the
+  contenteditable, so the scrollport starts at y=0 while its top 91px are permanently occluded, and
+  a browser asked to bring the caret into view scrolls it MINIMALLY — flush to the scrollport top,
+  which is behind the bar. Measured before the fix: caret top 0 against header bottom 91, the whole
+  caret hidden while typing. `scroll-pt-[var(--editor-chrome-h)]` moves the browser's idea of "in
+  view" past the occlusion and costs nothing on a container whose top band is covered anyway. Any
+  future overlaid chrome over a scroller owes the same pairing.
+- **`--editor-chrome-h` is MEASURED, and the header's height is set by the toolbar, not the lockup.**
+  The header is `items-center`, so its height is whichever child is taller — the EditorToolbar at
+  54px (bordered, ~44pt targets), not the 37px lockup. Deriving it from the lockup gives 68px and is
+  wrong by 23. It is `20 (pt-5) + 54 + 16 (pb-4) + 1 (border) = 91`, and `verify-glass.mjs` measures
+  the rendered header against the token because nothing at runtime can notice the two drifting —
+  the same situation as `lineHeightPx` and the `change` curve.
+- **Glass contrast has TWO floors, and more blur makes contrast WORSE.** Measured, per pixel, against
+  the real backdrop: wordmark and toolbar glyphs clear **4.5:1**, the byline only **4.0:1**. The
+  byline is the binding case and in LIGHT theme, not dark — lime-700 is 4.99:1 on flat white (half a
+  point of headroom, see the byline gotcha above) and blurred dark script DARKENS that backdrop,
+  taking it to **4.38:1**. A blanket 4.5 floor would have failed there, and the only way to pass it
+  is a tint approaching opaque — i.e. shipping a nearly solid bar while calling it glass. The byline
+  is decorative and this repo already shipped it at 4.09:1 by explicit argument, so 4.0 is the floor
+  it actually has rather than a new rule smuggled in under an effect.
+  **The check measures the WORST patch (5th percentile), never the mean** — that was measured too: a
+  mean backdrop washes out hot spots and scored the byline 14:1 while it sat visibly across one
+  bright blurred word. The 5th percentile rather than the raw minimum because a single antialiased
+  pixel at a glyph edge is not what anyone reads.
+  **And the intuitive lever is backwards**: raising the blur LOWERS contrast, because it spreads ink
+  into a wider dimmed region rather than leaving clean gaps between strokes. Measured on the byline:
+  `blur-xl` 4.38 → `blur-2xl` 4.04 → `blur-3xl` 3.78 (fails). `blur-xl` at 68% is the best point
+  tested on BOTH axes — it has the strongest show-through (channel delta 9.0) and ties the best
+  contrast; `blur-2xl` at 80% matches the contrast with half the visible effect. Tune the tint, not
+  the blur.
+  `bg-bg/95` is written before the `supports-[backdrop-filter]:bg-bg/68` for a real reason: with no
+  blur support the tint carries all the contrast alone, and the target is a budget Android tablet.
+  **Owed: an iPad Safari check.** Chromium does not reproduce iOS Safari's scroll-time
+  `backdrop-filter` behaviour (stale or one-frame-late blur over a scrolling area), and iPad Safari
+  is the primary device — the same class of owed answer as the preset sizes. Chromium showed no
+  flicker through an Editor→Setup→Editor transition, which was the other risk (App's screen panel
+  animates `x`/`opacity` and is this header's backdrop root).
+  Deliberately NOT extended to `components/prompt/`: its chrome auto-hides and it is the one screen
+  where a compositor layer costs the presenter something. This lands on the writing screen, off the
+  reading-critical path, which is the whole argument for accepting the blur at all.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -569,6 +715,15 @@ node scripts/verify-type-motion.mjs # one motion vocabulary + one label style ac
                                 # boundary (no server needed)
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
+node scripts/verify-glass.mjs # the Editor header's glass is REAL (text actually passes behind it)
+                                # and every element in it stays legible — worst-case contrast, both
+                                # themes. Needs a dev server.
+node scripts/verify-colophon.mjs # the colophon hangs centred under the CTA at every width, its two
+                                # links do not overlap, hover matches the byline, and the logo's
+                                # measured 4px gap is untouched. Needs a dev
+                                # server, so like verify-preset-size it cannot ride in
+                                # `vercel-build`. RUN IT after touching the Editor footer, the
+                                # byline, or SocialLinks/AppVersion.
 node scripts/verify-false-jump.mjs # weak evidence never sends the script somewhere the presenter
                                 # is not, and strong evidence still does (no server; ~5s, so
                                 # unlike verify-lexicon it does NOT ride in vercel-build)
