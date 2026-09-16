@@ -78,8 +78,31 @@ export function EditorScreen() {
           fallback. Verified in the built CSS, not assumed.
           No bare `transition-*` utility: `@layer base` gives `body *` a transition-property list for
           the theme cross-fade and that property is REPLACED, never merged (see index.css). */}
-      <header className="absolute inset-x-0 top-0 z-10 border-b border-border/50 bg-bg/95 backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-bg/68">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 pt-5 pb-4 sm:px-10">
+      <header className="absolute inset-x-0 top-0 z-10">
+        {/* THE GLASS PANE, WHICH DELIBERATELY HAS NO CONTENT.
+
+            Reported from an installed PWA on an iPad and confirmed from the screenshot: the
+            wordmark, the byline and the toolbar all rendered blurred and washed out while the
+            script text directly beneath them stayed crisp. `backdrop-filter` was blurring the
+            element's OWN CHILDREN.
+
+            iOS Safari gets the backdrop root wrong when a `backdrop-filter` element sits inside an
+            ancestor that is transformed AND clipped — and it does here twice over: App renders each
+            screen in a Framer panel carrying an animated `transform`, inside a
+            `relative h-[100dvh] overflow-hidden` wrapper. Chromium and headless WebKit both
+            composite it correctly, which is why every check passed and the device did not.
+
+            Splitting the pane from the content is the fix, and it is structural rather than a
+            workaround to tune: an element with no descendants has nothing of its own to blur,
+            whatever an engine decides the backdrop root is. The content is a SIBLING above it.
+            `verify-glass.mjs` now asserts the blurred element is childless, because re-merging
+            them would look tidier, pass every local check, and only fail on the one device the
+            app is for. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 border-b border-border/50 bg-bg/95 backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-bg/68"
+        />
+        <div className="relative mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 pt-[max(1.25rem,var(--safe-top))] pb-4 sm:px-10">
         {/* The lockup, matched to Figma node 4771:414: a 168x19 mark over the byline, 4px apart,
             both flush LEFT. Figma's frame is `items-start` and the byline (163px) is narrower than
             the mark (168px), so centring it — which is what this did while the mark carried its

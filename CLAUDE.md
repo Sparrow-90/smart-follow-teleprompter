@@ -54,8 +54,9 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   first time that colour is used for anything but the byline. See the gotchas below for all four.
 - **Frosted-glass Editor header — shipped** (same branch). The header now OVERLAYS the script so
   text slides under it, tinted `bg-bg/68` with `backdrop-blur-xl`. Getting it to do anything at all
-  was a layout change, not a style one — see the gotcha below, and note the **iPad Safari check is
-  owed**.
+  was a layout change, not a style one — see the gotcha below. The **iPad check came back failing**:
+  iOS blurred the header's own content, and nothing in the app cleared the status bar. Both fixed
+  and both now guarded (`verify-glass`, `verify-safe-area`).
 
 ## Stack
 
@@ -581,6 +582,35 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   caret hidden while typing. `scroll-pt-[var(--editor-chrome-h)]` moves the browser's idea of "in
   view" past the occlusion and costs nothing on a container whose top band is covered anyway. Any
   future overlaid chrome over a scroller owes the same pairing.
+- **A `backdrop-filter` element must have NO CHILDREN, or iOS Safari blurs its own content.**
+  This shipped and broke on the primary device. On an installed iPad PWA the wordmark, the byline
+  and the toolbar all rendered blurred and washed out while the script text directly beneath them
+  stayed crisp — `backdrop-filter` was blurring the header's own subtree. iOS gets the backdrop
+  root wrong when the filtered element sits inside an ancestor that is transformed AND clipped, and
+  it does here twice over: `App` renders each screen in a Framer panel carrying an animated
+  `transform`, inside a `relative h-[100dvh] overflow-hidden` wrapper. **Chromium and headless
+  WebKit both composite it correctly**, so every local check passed and only the device disagreed —
+  Playwright's WebKit is not iOS Safari's compositor, and the "owed iPad check" in the glass work
+  was owed for exactly this. The fix is structural rather than a tint to tune: the glass is a bare
+  `absolute inset-0` pane with no descendants, and the header content is a `relative` SIBLING above
+  it. An element with nothing inside it has nothing of its own to blur, whatever an engine decides
+  the backdrop root is. `verify-glass.mjs` asserts the pane is childless, because re-merging the
+  two would read as tidying, pass every check here, and fail only on an iPad.
+- **`viewport-fit=cover` + `black-translucent` means the app draws UNDER the iOS status bar, and
+  only the footers knew.** `index.html` pairs those two so an installed PWA fills the screen; the
+  cost is that the top ~24px of every screen is beneath the clock on a home-screen launch. Both
+  footers had always honoured `env(safe-area-inset-bottom)`; nothing honoured the top. Measured at
+  24px before the fix: the Editor's script area starting at y=0 and its wordmark clipped, Setup's
+  **"Back to editor" 4px covered** — which is the button a presenter cannot press — and Prompt
+  Mode's Exit likewise. All three now pad by `max(<their own base>, var(--safe-top))`.
+  **`--safe-top` is a CUSTOM PROPERTY, and that is what makes an iPad-only condition testable**:
+  `env()` cannot be faked in a headless browser, but a test can set the property and measure, which
+  is what `verify-safe-area.mjs` does. Write `env(safe-area-inset-top)` directly at a site and it
+  drops out of that check silently, so the script greps for the token as part of the assertion.
+  `--editor-chrome-h` folds the same value in (`calc(70px + max(1.25rem, var(--safe-top)))`) so the
+  editor's first line and its `scroll-padding-top` clear the REAL chrome on a device, not a
+  desk-measured one — verified at a simulated 24px inset, where the header grows 90 → 94 and both
+  follow it.
 - **`--editor-chrome-h` is MEASURED, and the header's height is set by the toolbar, not the lockup.**
   The header is `items-center`, so its height is whichever child is taller — the EditorToolbar at
   54px (bordered, ~44pt targets), not the 37px lockup. Deriving it from the lockup gives 68px and is
@@ -715,6 +745,9 @@ node scripts/verify-type-motion.mjs # one motion vocabulary + one label style ac
                                 # boundary (no server needed)
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
+node scripts/verify-safe-area.mjs # nothing hides under the iOS status bar on an installed iPad,
+                                # and the Editor's chrome grows with the inset. Simulates the
+                                # inset via --safe-top, so it needs no device. Dev server.
 node scripts/verify-glass.mjs # the Editor header's glass is REAL (text actually passes behind it)
                                 # and every element in it stays legible — worst-case contrast, both
                                 # themes. Needs a dev server.

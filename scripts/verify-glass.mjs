@@ -36,10 +36,16 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures++
 }
 
-// --- the token is read from source, then measured against the real header -----
+// --- the token is a calc() that TRACKS the status bar, so it is resolved live --
+// It used to be a literal and could be read with a regex. It now folds in `--safe-top`, because
+// an installed iPad PWA draws under the status bar and the editor's first line has to clear the
+// real chrome, not a desk-measured one. So the source check is about SHAPE, and the value is
+// resolved by the browser below (via the padding the editor actually gets).
 const css = readFileSync('src/index.css', 'utf8')
-const TOKEN = Number(css.match(/--editor-chrome-h:\s*(\d+)px/)?.[1])
-check(Number.isFinite(TOKEN), '--editor-chrome-h is declared', `${TOKEN}px`)
+check(
+  /--editor-chrome-h:\s*calc\([^;]*var\(--safe-top\)/.test(css),
+  'the chrome height tracks the safe-area inset rather than a fixed number',
+)
 check(
   /pt-\[var\(--editor-chrome-h\)\]/.test(readFileSync('src/components/editor/ScriptEditor.tsx', 'utf8')),
   'the editor pads its first line past the glass from that same token',
@@ -140,11 +146,31 @@ for (const theme of ['dark', 'light']) {
   }, theme)
 
   // --- the header matches the token it is padded by --------------------------
-  const headerH = await page.evaluate(() => document.querySelector('header').getBoundingClientRect().height)
+  const { headerH, tokenPx, paneChildren } = await page.evaluate(() => {
+    const header = document.querySelector('header')
+    const pane = header.firstElementChild
+    return {
+      headerH: header.getBoundingClientRect().height,
+      // The editor's own padding IS the token, resolved by the engine — no calc() parsing here.
+      tokenPx: parseFloat(getComputedStyle(document.querySelector('.script-editor')).paddingTop),
+      paneChildren: pane.childElementCount,
+    }
+  })
   check(
-    Math.abs(headerH - TOKEN) <= 1,
-    `${theme}: the rendered header is exactly --editor-chrome-h`,
-    `${headerH.toFixed(1)}px vs ${TOKEN}px`,
+    Math.abs(headerH - tokenPx) <= 1,
+    `${theme}: the rendered header matches the resolved --editor-chrome-h`,
+    `${headerH.toFixed(1)}px vs ${tokenPx.toFixed(1)}px`,
+  )
+  /*
+   * The blurred element must stay CHILDLESS. iOS Safari blurred the header's own content when the
+   * filter sat on the element that contained it — reported from an installed iPad PWA, invisible
+   * in Chromium and headless WebKit both. An element with no descendants has nothing of its own to
+   * blur whatever an engine thinks the backdrop root is, so this is the invariant, not the tint.
+   */
+  check(
+    paneChildren === 0,
+    `${theme}: the blurred pane has no content of its own (the iOS fix)`,
+    `${paneChildren} child element(s)`,
   )
 
   // --- fill the editor and scroll text under the glass -----------------------
@@ -211,7 +237,7 @@ for (const theme of ['dark', 'light']) {
   // --- hide the header's CONTENT, keep the glass painting --------------------
   const targets = await page.evaluate(() => {
     const header = document.querySelector('header')
-    const bar = header.firstElementChild
+    const bar = header.lastElementChild // the content row; firstElementChild is the glass pane
     const pick = {
       wordmark: header.querySelector('svg[role="img"]'),
       byline: header.querySelector('.font-byline'),
@@ -240,7 +266,7 @@ for (const theme of ['dark', 'light']) {
     DSF,
   )
   await page.evaluate(() => {
-    for (const el of document.querySelector('header').firstElementChild.children) el.style.visibility = ''
+    for (const el of document.querySelector('header').lastElementChild.children) el.style.visibility = ''
   })
 
   // --- the effect is REAL: the backdrop is not flat page colour --------------
