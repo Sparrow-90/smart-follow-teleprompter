@@ -150,9 +150,12 @@ const COMMAND_MEANINGS: Record<VoiceCommand, string> = {
   back: `back ${VOICE_NUDGE_LINES} lines`,
   forward: `forward ${VOICE_NUDGE_LINES} lines`,
   resume: 'resume following',
-  // The two-stage behaviour is the half nobody would guess, and `previousParagraphIndex` only
-  // works because of it — first say goes to the top of this paragraph, second to the one before.
-  paragraphBack: 'back one paragraph — again for the one before',
+  // The two-stage behaviour is the half nobody would guess, and it is easy to describe wrongly:
+  // `previousParagraphIndex` returns the top of the paragraph the presenter is ALREADY IN unless
+  // they are within `toleranceWords` of it, so the first say restarts this beat and only the
+  // second steps back. "back one paragraph" would send someone fumbling mid-paragraph one further
+  // back than they meant.
+  paragraphBack: 'back to the start of this paragraph — again for the one before',
 }
 
 /**

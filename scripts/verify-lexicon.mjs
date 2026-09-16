@@ -76,7 +76,19 @@ const check = (ok, label, detail = '') => {
     ...(src.match(/const GRAMMAR_ORDER[^=]*=\s*\[([^\]]*)\]/)?.[1] ?? '').matchAll(/'([^']+)'/g),
   ].map((m) => m[1])
 
-  check(order.length === 4, 'GRAMMAR_ORDER still lists every command', order.join(', '))
+  /*
+   * Exhaustiveness, not length. `GRAMMAR_ORDER` is a plain array, so a fifth command added to the
+   * union and to both Records but forgotten here type-checks, and is then simply absent from the
+   * grammar — the recognizer can never return it and the Setup row never shows it. Comparing it
+   * against the keys of the phrase table is what notices; a `length === 4` check would have read
+   * as confirmation while the command went missing.
+   */
+  const declared = Object.keys(recordFor('pl')).sort()
+  check(
+    [...order].sort().join(', ') === declared.join(', '),
+    'GRAMMAR_ORDER lists every command COMMAND_PHRASES declares',
+    `order [${order.join(', ')}] vs table [${declared.join(', ')}]`,
+  )
   for (const [lang, key] of [
     ['pl-PL', 'pl'],
     ['en-US', 'en'],

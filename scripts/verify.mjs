@@ -74,12 +74,14 @@ const meanings = await page.locator('[data-voice-command-list] dd').allTextConte
 console.log('  aria-expanded:', await voiceRow.getAttribute('aria-expanded'))
 console.log('  listed:', listed.join(' / '))
 console.log('  meanings:', meanings.join(' / '))
-// Mirrors commandGrammarFor('pl-PL'), kept literal for the same reason verify-grammar.mjs keeps
-// its copy: the point is to catch a list the presenter is shown that nobody re-checked against
-// the grammar the recognizer is built from.
-const expectedPhrases = ['\u201cKlik g\u00f3ra\u201d', '\u201cKlik d\u00f3\u0142\u201d', '\u201cKlik akapit\u201d', '\u201cKlik start\u201d']
+// The four phrases commandGrammarFor('pl-PL') returns, in VOICE_COMMAND_DISPLAY_ORDER — the
+// READING order, which is NOT the grammar's (back, forward, resume, paragraphBack). Kept literal
+// for the same reason verify-grammar.mjs keeps its copy. The comparison is order-sensitive on
+// purpose: it checks the phrases AND the order they are read in, so a deliberate reordering is
+// meant to land here and be re-confirmed rather than pass unnoticed.
+const expectedPhrases = ['“Klik góra”', '“Klik dół”', '“Klik akapit”', '“Klik start”']
 console.log(
-  '  every phrase is one the recognizer can return:',
+  "  the grammar's phrases, in reading order:",
   JSON.stringify(listed) === JSON.stringify(expectedPhrases),
 )
 await page.getByLabel('Smart Follow language').selectOption('en-US')

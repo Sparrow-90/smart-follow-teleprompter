@@ -189,7 +189,19 @@ describe('voiceCommands — the grammar', () => {
  * verify-lexicon.mjs, which now covers the UI's claims for free.
  */
 describe('voiceCommands — what the presenter is shown', () => {
-  const ALL_COMMANDS: VoiceCommand[] = ['back', 'forward', 'resume', 'paragraphBack']
+  /*
+   * Written as a Record, not an array, so it is the TYPE that keeps this list honest: a fifth
+   * member of `VoiceCommand` makes this object fail to compile, which forces it in here, which in
+   * turn makes the coverage and permutation checks below actually mean something. As a plain
+   * array it would silently keep testing four commands out of five.
+   */
+  const EVERY_COMMAND: Record<VoiceCommand, true> = {
+    back: true,
+    forward: true,
+    resume: true,
+    paragraphBack: true,
+  }
+  const ALL_COMMANDS = Object.keys(EVERY_COMMAND) as VoiceCommand[]
   const LANGS = ['pl-PL', 'en-US']
 
   it('leaves the grammar byte-identical after being derived from the help table', () => {

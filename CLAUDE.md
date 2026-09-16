@@ -133,7 +133,18 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   a unit test objecting. It now also reads `voiceCommands.ts` and asserts that `COMMAND_PHRASES`
   walked in `GRAMMAR_ORDER` rebuilds that literal exactly — the same assert-across-a-boundary trick
   `verify-type-motion.mjs` uses for the `change` curve, and it runs before the models-missing SKIP
-  because it needs no models. Checked by breaking it both ways (a typo and a reorder).
+  because it needs no models. Checked by breaking it three ways (a typo, a reorder, and a command
+  dropped from `GRAMMAR_ORDER`). That last one is its own hole: the two Records are keyed by
+  `VoiceCommand`, so a fifth command is a type error there — but `GRAMMAR_ORDER` is a plain array,
+  and a command missing from it type-checks and is then simply absent from the grammar, so the
+  recognizer can never return it and the row never shows it. The script compares the order against
+  the table's keys rather than its length, because `length === 4` would have read as confirmation
+  while the command went missing.
+  **The `meaning` strings are the one thing no check can reach**, and one shipped wrong: the tests
+  pin phrase→command and that a meaning is non-empty, never meaning→behaviour. `paragraphBack` was
+  described as "back one paragraph", but `previousParagraphIndex` returns the top of the paragraph
+  the presenter is ALREADY IN unless they are within `toleranceWords` of it — so the first say
+  restarts this beat and only the second steps back. Read that function before touching this copy.
   Two orders exist on purpose:
   `GRAMMAR_ORDER` is what the recognizer gets and is load-bearing, because `verify-lexicon.mjs`
   and `verify-grammar.mjs` both keep the phrase list as a literal (node cannot import a `.ts`), so
