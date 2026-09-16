@@ -16,6 +16,16 @@
   --color-border: #262626; /* neutral-800 */
   --color-accent: #ffffff; /* CTA background */
   --color-accent-fg: #0a0a0a; /* CTA text */
+  /*
+   * The byline under the PROMPTLY lockup, and the only colour in the app that is not neutral.
+   * Figma's `color/lime/300` (#bbf451), authored on the dark canvas - 15.25:1 here, where the
+   * grey it replaces managed 4.09:1 and was accepted at the time as a decorative trade.
+   *
+   * It is a TOKEN rather than the literal hex the grey was, because lime does not survive the
+   * theme swap: #bbf451 on the light background is 1.30:1, which is not a trade, it is an
+   * invisible byline. The light value below is the same hue carried down until it is legible.
+   */
+  --color-byline: #bbf451; /* lime-300 */
 }
 
 .light {
@@ -27,6 +37,8 @@
   --color-border: #e5e5e5; /* neutral-200 */
   --color-accent: #0a0a0a;
   --color-accent-fg: #ffffff;
+  /* lime-700 - 4.99:1 on white, the nearest step of Figma's own ramp that clears 4.5:1 at 10px. */
+  --color-byline: #4d7c0f;
 }
 
 /*
@@ -75,6 +87,7 @@
   --color-border: var(--color-border);
   --color-accent: var(--color-accent);
   --color-accent-fg: var(--color-accent-fg);
+  --color-byline: var(--color-byline);
 }
 
 html,

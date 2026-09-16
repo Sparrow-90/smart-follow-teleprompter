@@ -50,19 +50,26 @@ export function EditorScreen() {
     <div className="flex h-[100dvh] flex-col">
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-6 pt-5 sm:px-10">
         <header className="flex shrink-0 items-center justify-between gap-4">
-        {/* The lockup, matched to Figma node 4771:414. Items are centred so the byline centres
-            under the mark; the lockup as a whole still sits left in the header. */}
-        <div className="flex flex-col items-center">
-          <Wordmark className="h-[49px] w-[176px] text-fg" />
-          {/* Byline, Figma node 4877:604: Urbanist Light 10/20, 5.3px tracking, #6a7282.
-              `capitalize` is Figma's too — it renders the stored "by" as "By".
+        {/* The lockup, matched to Figma node 4771:414: a 168x19 mark over the byline, 4px apart,
+            both flush LEFT. Figma's frame is `items-start` and the byline (163px) is narrower than
+            the mark (168px), so centring it — which is what this did while the mark carried its
+            reflection — sits it 2.5px right of where the design puts it. */}
+        <div className="flex flex-col items-start">
+          <Wordmark className="h-[19px] w-[168px] text-fg" />
+          {/* Byline, Figma node 4877:604: Urbanist Light 10/20, 5px tracking, `color/lime/300`.
+              `capitalize` is Figma's too — it renders the stored "by" as "By". The lime is a
+              token (see --color-byline in index.css) because it is legible on one theme only.
 
-              The grey is Figma's literal brand value rather than a theme token, and that is a
-              measured trade, not an oversight: it is 4.84:1 on the light background but only
-              4.09:1 on the dark one, short of the 4.5:1 WCAG AA wants for 10px text. Kept because
-              the wordmark lockup was specified 1:1 and this is a decorative byline, not content.
-              `text-fg-muted` (7.66:1 on dark) is the accessible alternative if that changes. */}
-          <span className="font-byline text-[10px] leading-5 font-light tracking-[5.3px] text-[#6a7282] capitalize">
+              The -2px is what buys Figma's 4px gap, and it is measured, not guessed. Figma trims
+              the text box to cap-height (its text node is 7px tall, not 20), so its 4px is
+              mark-bottom to CAP-top. A 10/20 line box here puts the cap top 6px below its own
+              top: Urbanist is ascent 0.9em / descent 0.3em / cap 0.7em, so half-leading is
+              (20 − 12) / 2 = 4 and the baseline sits at 13, putting the cap at 6. 4 − 6 = −2.
+              Doing it this way rather than with `text-box-trim` is deliberate: that property
+              needs Safari 18.2 / Chrome 133, and this app targets an iPad and a budget Android
+              tablet. Font metrics are the font's own, so this number holds in every browser —
+              but it IS tied to Urbanist at 10/20. Re-measure if any of those three move. */}
+          <span className="font-byline -mt-[2px] text-[10px] leading-5 font-light tracking-[5px] text-byline capitalize">
             by Mateusz Wróbel
           </span>
         </div>

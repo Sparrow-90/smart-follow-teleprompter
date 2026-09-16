@@ -42,6 +42,11 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
 - **Paragraph markers — shipped** (branch `paragraph-markers`). A `section` block the presenter
   places (or that a reflowed PDF paste places for them), rendered as a numbered rule, with
   **"Klik akapit" / "Click paragraph"** jumping BACK a paragraph. Recovery, not navigation.
+- **Logo lockup re-synced to Figma — shipped** (branch `logo-lockup-figma-sync`). Node 4771:414
+  changed, and the letterforms did NOT: the exported path is byte-identical to the one in the
+  repo. What changed is the styling — the mirrored **reflection is gone** (the mark is 168x19, the
+  lockup 30px rather than 49), the lockup is flush LEFT, and the byline is **lime**. That lime is
+  the app's first non-neutral colour and it is a token, not a literal — see the gotcha below.
 
 ## Stack
 
@@ -444,6 +449,26 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   every far jump catches up fastest. Both halves were checked by making them fail.
   Still open, deliberately: a *correct* far jump still travels at 320px/s, so a genuine skip
   across the script takes seconds to arrive.
+- **The byline's lime is the one colour in a monochrome app, and it could not stay a literal.**
+  The byline had carried Figma's grey `#6a7282` as a hardcoded hex, with a comment arguing that a
+  decorative byline may take a measured contrast hit (4.84:1 light / 4.09:1 dark). Figma's
+  `color/lime/300` (`#bbf451`) breaks that argument rather than continuing it: 15.25:1 on the dark
+  background — a real improvement — but **1.30:1 on the light one**, which is not a trade, it is an
+  invisible byline on half the app. So it is `--color-byline`, swapped per theme like every other
+  semantic token, with light getting lime-700 (`#4d7c0f`, 4.99:1) — the nearest step of Figma's own
+  ramp that clears 4.5:1 at 10px. Figma authored the lockup on the dark canvas only (the mark path
+  fills `white`) and publishes no light variant, so the light value is this repo's, not the
+  design's; it is the thing to re-check if the brand ever specifies one.
+- **The byline's 4px gap is bought with a measured `-2px`, NOT with `text-box-trim`.** Figma trims
+  the text box to cap height — its text node is 7px tall, not 20 — so its 4px is mark-bottom to
+  CAP-top, and a naive `gap-1` under a 10/20 line box renders ~10px instead. Urbanist is ascent
+  0.9em / descent 0.3em / cap 0.7em (measured through canvas `TextMetrics`, and its 7px cap matches
+  Figma's node height exactly), so half-leading is `(20 - 12) / 2 = 4`, the baseline sits at 13, and
+  the cap top lands 6px into the line box: `4 - 6 = -2`. `text-box-trim` would express this
+  directly and is what Figma emits, but it needs Safari 18.2 / Chrome 133 and this app targets an
+  iPad and a **budget Android tablet** — the one place a desktop-Chrome eyeball would have passed a
+  layout that is wrong on the real device. Font metrics belong to the font, so the -2px holds in
+  every browser; it is tied to Urbanist at 10/20 and must be re-measured if any of the three move.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
