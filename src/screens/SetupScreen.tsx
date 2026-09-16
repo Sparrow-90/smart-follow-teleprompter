@@ -34,7 +34,7 @@ export function SetupScreen() {
   return (
     <div className="flex h-[100dvh] flex-col">
       {/* Scrollable content — guarantees everything is reachable on short/landscape phones. */}
-      <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-6 pt-5 sm:px-10">
+      <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-6 pt-[max(1.25rem,var(--safe-top))] sm:px-10">
         <header className="flex items-center gap-3">
           <motion.button
             onClick={() => goTo('editor')}

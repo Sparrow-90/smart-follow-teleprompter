@@ -71,18 +71,33 @@
   --duration-theme: 250ms;
 
   /*
+   * The iOS status bar's height, and 0 everywhere else.
+   *
+   * `index.html` sets `viewport-fit=cover` with `apple-mobile-web-app-status-bar-style:
+   * black-translucent`, so an INSTALLED PWA draws under the status bar. Nothing in the app used
+   * `env(safe-area-inset-top)`, so on an iPad home-screen launch the top ~24px of every screen sat
+   * beneath the clock: the wordmark clipped, Setup's back button 4px covered, Prompt Mode's Exit
+   * likewise. Both footers already did the equivalent for the bottom inset.
+   *
+   * It is a CUSTOM PROPERTY rather than `env()` written at each site, and that is what makes the
+   * whole thing testable: `env()` cannot be faked in a headless browser, but a test can set this
+   * to 24px and measure — which is exactly what verify-safe-area.mjs does.
+   */
+  --safe-top: env(safe-area-inset-top, 0px);
+
+  /*
    * The Editor header's rendered height, and the distance ScriptEditor pads its first line past.
    * The header OVERLAYS the editor so script text can slide under the glass, so these two numbers
    * have to agree and nothing at runtime can notice them drifting — the same situation as
-   * lineHeightPx and the `change` curve, and handled the same way: `verify-glass.mjs` measures the
-   * real header against this value.
+   * lineHeightPx and the `change` curve. `verify-glass.mjs` measures the real header against it.
    *
    * MEASURED, not derived. The header is `items-center`, so its height is set by whichever of the
    * lockup and the toolbar is taller — and it is the TOOLBAR (54px, bordered with ~44pt targets),
    * not the 37px lockup. Deriving it from the lockup gives 68px and is wrong by 23.
-   * 20 (pt-5) + 54 (toolbar) + 16 (pb-4) + 1 (border) = 91.
+   * 54 (toolbar) + 16 (pb-4) = 70, plus whatever the top padding resolves to — which now tracks
+   * the status bar, so the editor's first line clears the real chrome on an installed iPad too.
    */
-  --editor-chrome-h: 91px;
+  --editor-chrome-h: calc(70px + max(1.25rem, var(--safe-top)));
 }
 
 /* Expose the semantic tokens to Tailwind utilities (bg-bg, text-fg, border-border, …). */

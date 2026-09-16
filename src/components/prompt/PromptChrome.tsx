@@ -34,7 +34,7 @@ export function PromptChrome({ visible, onExit, status, onStatusClick }: PromptC
       // script. PromptControls goes the other way for the other reason: it shrink-wraps, so
       // there is barely any empty area to give away, and swallowing a near-miss there is a win.
       className={cn(
-        'pointer-events-none absolute top-0 right-0 left-0 z-30 flex items-center justify-between px-5 py-4 transition-opacity duration-[var(--duration-change)] ease-[var(--ease-change)]',
+        'pointer-events-none absolute top-0 right-0 left-0 z-30 flex items-center justify-between px-5 pt-[max(1rem,var(--safe-top))] pb-4 transition-opacity duration-[var(--duration-change)] ease-[var(--ease-change)]',
         visible ? 'opacity-100 [&_button]:pointer-events-auto' : 'opacity-0',
       )}
     >
