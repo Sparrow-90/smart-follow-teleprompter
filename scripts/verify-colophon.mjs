@@ -1,23 +1,26 @@
 /**
- * The colophon does not move the logo, and its two links do not fight over a tap.
+ * The colophon sits under the CTA at every width, and its two links do not fight over a tap.
  *
- * Putting the version and the social links on the byline row is the placement that touches the
- * most carefully measured markup in the app. `EditorScreen` derives a -2px offset from Urbanist's
- * metrics at 10/20 to buy Figma's 4px mark-to-cap gap, and that offset now sits on a FLEX ROW
- * rather than on the byline span — so `items-center` recentres every child against the tallest
- * one, and a single child with a taller line box drops the byline and voids the derivation. A bare
- * `<span>·</span>` inheriting body 14px at line-height 1.5 is a 21px box: one pixel is enough, and
- * nothing at runtime complains. That is the bug class this exists for.
+ * It lives in the FOOTER, and the two things that bought are what this pins. It shares no line
+ * with the byline, so the -2px that buys Figma's 4px mark-to-cap gap is still on the span where
+ * nothing can disturb it — the header is byte-for-byte what it was before this work. And a
+ * full-width footer fits it at every viewport, where the byline row needed 290px against the 342px
+ * a 390px header has and had to hide below `sm`.
  *
- * Both numbers below are the source comment's own derivation, asserted rather than snapshotted:
- * Urbanist is ascent 0.9em / descent 0.3em / cap 0.7em, so at 10/20 half-leading is (20 − 12) / 2
- * = 4, the baseline sits at 13, and the cap top lands 6px below the line box's top.
+ * The byline gap is checked anyway. Not because this branch moves it — it does not — but because
+ * an earlier draft DID put the colophon on that row, and the cheapest way to keep that from being
+ * re-attempted silently is to leave a guard behind that fails when the gap changes.
  *
- * Measure the ROW, never the byline span. `getBoundingClientRect()` on an INLINE element returns
- * the font-metrics content area (ascent + descent) and ignores `line-height` entirely — Urbanist
- * at 10px gives a 12px rect sitting 4px below the line box, so the span's `top` is already off by
- * exactly the half-leading and the `+ CAP_TOP` below would compound it. The row is a block box
- * whose rect top IS its box top, and it is the same rect the height check reads.
+ * Reading the byline's box is the subtle part, and it turns on ONE property. An inline element's
+ * `getBoundingClientRect()` returns the font-metrics content area (ascent + descent) and ignores
+ * `line-height` entirely, which would put its rect 4px below its line box and make the cap 2px
+ * down rather than 6. But the byline is a FLEX ITEM — the direct child of a `flex flex-col` — and
+ * flex items are blockified, so its rect is its border box and its top IS the line-box top.
+ *
+ * That is a layout fact, not a constant, so it is asserted rather than assumed: the height check
+ * below pins the rect at exactly one line box. Restructure the header so the span is genuinely
+ * inline and that check fails first, naming the reason, instead of the gap silently reading 4px
+ * off while every other assertion passes.
  *
  * Run with the dev server up: node scripts/verify-colophon.mjs
  */
@@ -26,23 +29,14 @@ import { chromium } from 'playwright'
 
 const BASE = process.env.BASE ?? 'http://localhost:5173'
 
-/** Urbanist at 10/20 — see the header. Both follow from the font's metrics, not from taste. */
-const ROW_HEIGHT = 20
-const CAP_TOP = 6
+/** Urbanist at 10/20 — every number derived from the font's own metrics, none of them taste. */
+const LINE_BOX = 20
+const ASCENT = 9 // 0.9em
+const DESCENT = 3 // 0.3em
+const CAP = 7 // 0.7em, and exactly the height of Figma's text node
+const BASELINE = (LINE_BOX - (ASCENT + DESCENT)) / 2 + ASCENT // 13
+const CAP_TOP = BASELINE - CAP // 6, below the LINE BOX top
 const FIGMA_GAP = 4
-
-/**
- * Read from source rather than repeated, and then ACTUALLY COMPARED — the offset is the subject of
- * this check, so reading it only to print it in a failure message would look like a guard without
- * being one. The three numbers above are one equation: the row's top sits OFFSET above the mark's
- * bottom, the cap is CAP_TOP below the row's top, and what is left is Figma's gap. So the authored
- * offset must be ROW_HEIGHT − CAP_TOP − FIGMA_GAP exactly, and the browser measurement below is
- * the independent confirmation that the DOM agrees with the arithmetic.
- */
-const editor = readFileSync('src/screens/EditorScreen.tsx', 'utf8')
-const offsetMatch = editor.match(/data-colophon[^>]*?-mt-\[(\d+)px\]|-mt-\[(\d+)px\][^>]*?data-colophon/)
-if (!offsetMatch) throw new Error('could not read the colophon row offset out of EditorScreen.tsx')
-const OFFSET = Number(offsetMatch[1] ?? offsetMatch[2])
 
 let failures = 0
 const check = (ok, label, detail = '') => {
@@ -50,57 +44,67 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures++
 }
 
+// --- the offset is read from source AND compared, not just reported -----------
+const editor = readFileSync('src/screens/EditorScreen.tsx', 'utf8')
+const offset = editor.match(/font-byline -mt-\[(\d+)px\]/)
+check(Boolean(offset), 'the byline still carries its measured offset on the span itself')
+const OFFSET = offset ? Number(offset[1]) : NaN
 check(
   OFFSET === CAP_TOP - FIGMA_GAP,
-  `the authored row offset is what Urbanist's metrics require`,
+  "the authored offset is what Urbanist's metrics require",
   `-${OFFSET}px, expected -${CAP_TOP - FIGMA_GAP}px (cap top ${CAP_TOP} − Figma's ${FIGMA_GAP})`,
+)
+check(
+  /data-colophon/.test(editor.slice(editor.indexOf('<footer'))),
+  'the colophon is in the FOOTER, not back on the byline row',
 )
 
 const measure = (p) =>
   p.evaluate(() => {
     const row = document.querySelector('[data-colophon]')
     const mark = document.querySelector('header svg[role="img"]')
-    const links = [...document.querySelectorAll('[data-colophon] a')]
-    const version = document.querySelector('[data-colophon] button')
-    if (!row || !mark || !version) return null
+    const byline = document.querySelector('header .font-byline')
+    const cta = document.querySelector('footer button')
+    const version = row?.querySelector('button')
+    if (!row || !mark || !byline || !version) return null
     const r = (el) => {
       const b = el.getBoundingClientRect()
-      return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, height: b.height, width: b.width }
+      return {
+        top: b.top, bottom: b.bottom, left: b.left, right: b.right,
+        height: b.height, width: b.width, centre: b.left + b.width / 2,
+      }
     }
     return {
-      row: r(row),
-      mark: r(mark),
-      version: r(version),
+      row: r(row), mark: r(mark), byline: r(byline), version: r(version),
+      cta: cta ? r(cta) : null,
       versionText: version.textContent.trim(),
       versionFont: getComputedStyle(version).fontFamily,
-      links: links.map((a) => ({
+      hoverRule: getComputedStyle(byline).color,
+      links: [...row.querySelectorAll('a')].map((a) => ({
         label: a.getAttribute('aria-label'),
         href: a.getAttribute('href'),
         target: a.getAttribute('target'),
         rel: a.getAttribute('rel'),
         ...r(a),
       })),
-      // Every child's box, so a regression names the culprit instead of just the total.
-      children: [...row.children].map((el) => ({
-        tag: el.tagName.toLowerCase(),
-        text: el.textContent.trim().slice(0, 24),
-        height: el.getBoundingClientRect().height,
-      })),
+      footerOverflow: +(
+        document.querySelector('footer').scrollWidth - document.querySelector('footer').clientWidth
+      ).toFixed(1),
     }
   })
 
 const browser = await chromium.launch()
 
 /*
- * Both TABLET orientations, because those are the devices this app is for and both must satisfy
- * the full invariant. The phone case is checked separately below and asserts something different
- * on purpose — see there.
+ * Both tablet orientations because those are the devices this is for, AND the phone — which is now
+ * a first-class case rather than an exception, since the footer has room the byline row did not.
  */
-for (const viewport of [
+for (const vp of [
   { width: 1024, height: 768, name: 'tablet landscape' },
   { width: 768, height: 1024, name: 'tablet portrait' },
+  { width: 390, height: 844, name: 'phone' },
 ]) {
-  const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } })
+  const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } })
   await page.goto(BASE, { waitUntil: 'networkidle' })
   await page.waitForSelector('[data-colophon]')
   // Urbanist and Geist Mono are self-hosted; a rect measured before they land is the fallback's.
@@ -108,50 +112,80 @@ for (const viewport of [
 
   const m = await measure(page)
   if (!m) {
-    check(false, `${viewport.name}: the colophon renders`)
+    check(false, `${vp.name}: the colophon renders`)
     await page.close()
     continue
   }
 
-  // --- the logo's measured gap survives the new row ---------------------------
+  // --- the header the colophon left behind is still correct -------------------
   check(
-    Math.abs(m.row.height - ROW_HEIGHT) < 0.5,
-    `${viewport.name}: the colophon row is exactly ${ROW_HEIGHT}px tall`,
-    m.children.map((c) => `${c.tag}${c.text ? `(${c.text})` : ''} ${c.height.toFixed(1)}`).join(', '),
+    Math.abs(m.byline.height - LINE_BOX) < 0.5,
+    `${vp.name}: the byline is blockified, so its rect IS its line box`,
+    `${m.byline.height.toFixed(1)}px, expected ${LINE_BOX}px — if this fails the gap below is measured against the wrong box`,
   )
-
-  const gap = m.row.top + CAP_TOP - m.mark.bottom
+  const gap = m.byline.top + CAP_TOP - m.mark.bottom
   check(
     Math.abs(gap - FIGMA_GAP) < 0.5,
-    `${viewport.name}: the mark-to-cap gap is Figma's ${FIGMA_GAP}px`,
-    `measured ${gap.toFixed(2)}px (row top ${m.row.top.toFixed(1)}, mark bottom ${m.mark.bottom.toFixed(1)}, offset -${OFFSET})`,
+    `${vp.name}: the byline still sits Figma's ${FIGMA_GAP}px under the mark`,
+    `measured ${gap.toFixed(2)}px (line box top ${m.byline.top.toFixed(1)} + cap ${CAP_TOP} − mark bottom ${m.mark.bottom.toFixed(1)})`,
   )
 
-  // --- the links go where they claim, and do not overlap ----------------------
-  check(m.links.length === 2, `${viewport.name}: both account links render`, `${m.links.length} found`)
+  // --- it is present at EVERY width, which is the point of the footer ---------
+  check(m.links.length === 2, `${vp.name}: both account links render`, `${m.links.length} found`)
+  check(
+    m.footerOverflow <= 0,
+    `${vp.name}: the colophon adds no horizontal overflow to the footer`,
+    `${m.footerOverflow}px`,
+  )
+  if (m.cta) {
+    check(
+      Math.abs(m.row.centre - m.cta.centre) < 1,
+      `${vp.name}: it is centred under the CTA it hangs from`,
+      `row ${m.row.centre.toFixed(1)} vs CTA ${m.cta.centre.toFixed(1)}`,
+    )
+    check(
+      m.row.top >= m.cta.bottom,
+      `${vp.name}: it sits below the CTA rather than overlapping it`,
+      `row top ${m.row.top.toFixed(1)}, CTA bottom ${m.cta.bottom.toFixed(1)}`,
+    )
+  }
+
   for (const link of m.links) {
     check(
       /^https:\/\//.test(link.href) && link.target === '_blank' && /noopener/.test(link.rel ?? ''),
-      `${viewport.name}: ${link.label} opens safely in a new tab`,
+      `${vp.name}: ${link.label} opens safely in a new tab`,
       `${link.href} target=${link.target} rel=${link.rel}`,
     )
   }
   if (m.links.length === 2) {
     const [a, b] = m.links
-    // The tap targets are grown with `-m-1.5 p-1.5`, which overhangs the 14px mark by 6px each
-    // way. At `gap-2` the boxes would overlap by 4px and a tap in that strip would open whichever
-    // link won — a tap that opens the WRONG account, which is worse than one that misses.
+    // `-m-1.5 p-1.5` grows each 14px mark to a 26px target while leaving its LAYOUT box at 14px,
+    // so the boxes overhang 6px each way and `gap-2` would have them fight over a 4px strip. A tap
+    // landing there opens whichever link won — the WRONG account, which beats missing entirely.
     check(
       a.right <= b.left + 0.5,
-      `${viewport.name}: the two tap targets abut rather than overlap`,
+      `${vp.name}: the two tap targets abut rather than overlap`,
       `${a.label} ends ${a.right.toFixed(1)}, ${b.label} starts ${b.left.toFixed(1)}`,
     )
     check(
       a.height >= 24 && b.height >= 24,
-      `${viewport.name}: each tap target clears 24px`,
+      `${vp.name}: each tap target clears 24px`,
       `${a.height.toFixed(1)} / ${b.height.toFixed(1)}`,
     )
   }
+
+  // --- the hover colour IS the byline's, not a lookalike ----------------------
+  await page.hover('[data-colophon] a[aria-label="GitHub"]')
+  await page.waitForTimeout(350)
+  const hovered = await page.evaluate(() => ({
+    link: getComputedStyle(document.querySelector('[data-colophon] a')).color,
+    byline: getComputedStyle(document.querySelector('header .font-byline')).color,
+  }))
+  check(
+    hovered.link === hovered.byline,
+    `${vp.name}: hover resolves to the byline's own colour`,
+    `${hovered.link} vs ${hovered.byline}`,
+  )
 
   // --- the version reveals its build, and re-collapses -------------------------
   const resting = m.versionText
@@ -159,74 +193,18 @@ for (const viewport of [
   const revealed = (await measure(page)).versionText
   check(
     revealed.length > resting.length && revealed.startsWith(resting),
-    `${viewport.name}: a tap reveals the build behind the version`,
+    `${vp.name}: a tap reveals the build behind the version`,
     `"${resting}" → "${revealed}"`,
   )
   await page.click('[data-colophon] button')
-  const collapsed = await measure(page)
   check(
-    collapsed.versionText === resting,
-    `${viewport.name}: a second tap puts it away`,
-    `"${collapsed.versionText}"`,
+    (await measure(page)).versionText === resting,
+    `${vp.name}: a second tap puts it away`,
   )
   check(
-    Math.abs(collapsed.row.height - ROW_HEIGHT) < 0.5,
-    `${viewport.name}: revealing and collapsing leaves the row height untouched`,
-    `${collapsed.row.height.toFixed(1)}px`,
-  )
-  check(
-    /mono/i.test(m.versionFont) || /Geist Mono/.test(m.versionFont),
-    `${viewport.name}: the version is set in the numeral face`,
+    /mono/i.test(m.versionFont),
+    `${vp.name}: the version is set in the numeral face`,
     m.versionFont,
-  )
-
-  await page.close()
-}
-
-/*
- * Below `sm` the extras must be ABSENT, and this deliberately does NOT assert the 20px row.
- *
- * Measured: the colophon wants 290px and EditorToolbar 215px, against the 342px a 390px header
- * has to give. Nothing fits three of those on one line, and the byline already wrapped at that
- * width before this row existed — the mark alone is 168px against the same toolbar. So the claim
- * worth pinning here is not a height this screen never had, but that the extras cannot make the
- * squeeze worse. Asserting 20px here would be asserting a bug fix nobody made.
- *
- * Nor is raw header overflow the measure: at 390px it is 57px, and it is 57px on `main` too
- * (checked by stashing this work and re-measuring) because `w-[168px]` of mark plus a 215px
- * toolbar already exceed 342px on their own. A check that fires on a condition this branch did not
- * create would be read as this branch's fault. What IS this row's responsibility is never being
- * the widest thing in the left column — at or under the mark's own width it cannot contribute to
- * the overflow at all, whatever the toolbar does.
- */
-{
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
-  await page.goto(BASE, { waitUntil: 'networkidle' })
-  await page.waitForSelector('[data-colophon]')
-  await page.evaluate(() => document.fonts.ready)
-
-  const phone = await page.evaluate(() => {
-    const row = document.querySelector('[data-colophon]')
-    const visible = (el) => !!el && el.getBoundingClientRect().width > 0
-    return {
-      byline: visible(row.querySelector('span')),
-      links: [...row.querySelectorAll('a')].filter(visible).length,
-      version: visible(row.querySelector('button')),
-      rowWidth: +row.getBoundingClientRect().width.toFixed(1),
-      markWidth: +document.querySelector('header svg[role="img"]').getBoundingClientRect().width.toFixed(1),
-    }
-  })
-
-  check(phone.byline, 'phone: the byline itself still renders')
-  check(
-    phone.links === 0 && !phone.version,
-    'phone: the colophon extras stand down below `sm`',
-    `${phone.links} link(s), version ${phone.version ? 'shown' : 'hidden'}`,
-  )
-  check(
-    phone.rowWidth <= phone.markWidth + 0.5,
-    'phone: the colophon is never wider than the mark, so it cannot widen the header',
-    `row ${phone.rowWidth}px vs mark ${phone.markWidth}px`,
   )
 
   await page.close()
@@ -236,7 +214,7 @@ await browser.close()
 
 console.log(
   failures === 0
-    ? "\n✓ the colophon sits on the byline without moving the logo, and its links do not overlap"
+    ? '\n✓ the colophon hangs under the CTA at every width, and its links do not overlap'
     : `\n✗ ${failures} check(s) failed`,
 )
 process.exit(failures === 0 ? 0 : 1)

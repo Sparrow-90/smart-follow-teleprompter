@@ -55,7 +55,7 @@ export function SocialLinks() {
              * The negative margin reaches up into the Wordmark's box. That is harmless — the
              * Wordmark is not interactive, so there is no target for this one to steal from.
              */
-            className="-m-1.5 block p-1.5 text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="-m-1.5 block p-1.5 text-fg-muted hover:text-byline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d={path} />

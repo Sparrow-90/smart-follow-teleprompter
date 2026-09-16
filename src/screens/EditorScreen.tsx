@@ -58,7 +58,9 @@ export function EditorScreen() {
             reflection — sits it 2.5px right of where the design puts it. */}
         <div className="flex flex-col items-start">
           <Wordmark className="h-[19px] w-[168px] text-fg" />
-          {/* THE COLOPHON ROW — the byline, the author's accounts, and which build this is.
+          {/* Byline, Figma node 4877:604: Urbanist Light 10/20, 5px tracking, `color/lime/300`.
+              `capitalize` is Figma's too — it renders the stored "by" as "By". The lime is a
+              token (see --color-byline in index.css) because it is legible on one theme only.
 
               The -2px is what buys Figma's 4px gap, and it is measured, not guessed. Figma trims
               the text box to cap-height (its text node is 7px tall, not 20), so its 4px is
@@ -68,47 +70,10 @@ export function EditorScreen() {
               Doing it this way rather than with `text-box-trim` is deliberate: that property
               needs Safari 18.2 / Chrome 133, and this app targets an iPad and a budget Android
               tablet. Font metrics are the font's own, so this number holds in every browser —
-              but it IS tied to Urbanist at 10/20. Re-measure if any of those three move.
-
-              It now sits on the ROW rather than on the byline span, and that only stays correct
-              while the row is exactly 20px tall: `items-center` recentres every child against the
-              tallest one, so a single child with a taller line box drops the byline and the
-              derivation above silently stops describing the screen. Which is why the separators
-              carry `text-[10px] leading-5` and are not bare — a plain <span>·</span> inherits
-              body 14px at line-height 1.5, which is a 21px box, and one pixel is enough.
-              `verify-colophon.mjs` pins both the height and the resulting 4px gap. */}
-          <div data-colophon className="-mt-[2px] flex items-center gap-3">
-            {/* Byline, Figma node 4877:604: Urbanist Light 10/20, 5px tracking, `color/lime/300`.
-                `capitalize` is Figma's too — it renders the stored "by" as "By". The lime is a
-                token (see --color-byline in index.css) because it is legible on one theme only.
-
-                The negative margin-inline-end is the same correction `.type-label` makes for
-                itself: 5px of tracking is applied after the final letter too, so the byline ends
-                with 5px of air that would read as uneven slack before the separator. Pull the box
-                back in by exactly the tracking and `gap-3` does the real spacing. */}
-            <span className="font-byline text-[10px] leading-5 font-light tracking-[5px] text-byline capitalize [margin-inline-end:-5px]">
-              by Mateusz Wróbel
-            </span>
-            {/* Hidden below `sm`, and that is a MEASUREMENT rather than a taste for tidy phones.
-                The colophon needs 290px and the toolbar 215px; a 390px header has 342px to give,
-                so all three cannot share a line and the byline wraps to three. It first fits at
-                640px — which is `sm`, the breakpoint this header already changes its padding on.
-                Below it the header is over budget with or without this row (the mark alone is
-                168px against that same 215px toolbar — measured at 57px of overflow on `main`
-                too), so hiding these restores exactly what the screen did before they existed
-                rather than papering over a new problem. Every target device — iPad portrait at
-                768, the Android tablet — is above the line. */}
-            <div className="hidden items-center gap-3 sm:flex">
-              <span aria-hidden className="text-[10px] leading-5 text-fg-faint">
-                ·
-              </span>
-              <SocialLinks />
-              <span aria-hidden className="text-[10px] leading-5 text-fg-faint">
-                ·
-              </span>
-              <AppVersion />
-            </div>
-          </div>
+              but it IS tied to Urbanist at 10/20. Re-measure if any of those three move. */}
+          <span className="font-byline -mt-[2px] text-[10px] leading-5 font-light tracking-[5px] text-byline capitalize">
+            by Mateusz Wróbel
+          </span>
         </div>
         <EditorToolbar
           boldActive={boldActive}
@@ -155,6 +120,25 @@ export function EditorScreen() {
         <CtaButton disabled={empty} onClick={() => goTo('setup')}>
           Continue
         </CtaButton>
+        {/* THE COLOPHON — the author's accounts and which build this is.
+
+            In the footer rather than beside the byline, and it buys two things that placement
+            could not. It no longer shares a line with the byline, so the -2px above (measured off
+            Urbanist's metrics to buy Figma's 4px mark-to-cap gap) is back on the span where
+            nothing can disturb it — the header is byte-for-byte what it was. And the full width
+            under a full-width CTA means it fits at EVERY viewport: on the byline it needed 290px
+            against a 390px header's 342px, which forced it to hide below `sm`. Nothing hides here.
+
+            `justify-center` under a full-width button is the conventional footer treatment, and
+            unlike the header's centre — where the same group floated between the lockup and the
+            toolbar with no relationship to either — this one is anchored to the CTA above it. */}
+        <div data-colophon className="mt-4 flex items-center justify-center gap-3">
+          <SocialLinks />
+          <span aria-hidden className="text-[10px] leading-5 text-fg-faint">
+            ·
+          </span>
+          <AppVersion />
+        </div>
       </footer>
     </div>
   )

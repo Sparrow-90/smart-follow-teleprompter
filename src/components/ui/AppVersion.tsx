@@ -46,7 +46,7 @@ export function AppVersion() {
        * `leading-5` is load-bearing, not styling. The row this sits in must stay exactly 20px tall
        * or the -2px that buys the logo's measured 4px gap is void — see EditorScreen.
        */
-      className="type-numeral text-[10px] leading-5 whitespace-nowrap text-fg-muted transition-colors hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      className="type-numeral text-[10px] leading-5 whitespace-nowrap text-fg-muted transition-colors hover:text-byline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
     >
       {/*
         A hard swap, deliberately: no AnimatePresence, no `layout`. The change is horizontal inside

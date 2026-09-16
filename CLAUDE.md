@@ -48,10 +48,10 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   lockup 30px rather than 49), the lockup is flush LEFT, and the byline is **lime**. That lime is
   the app's first non-neutral colour and it is a token, not a literal — see the gotcha below.
 - **Colophon: build version + author's accounts — shipped** (branch `app-version-and-social-links`).
-  The byline row in the Editor header now carries `by Mateusz Wróbel · ⌾ ⌾ · v0.2.0`, the version
-  opening on a tap to `v0.2.0 · e42e847 · 16 Sept 2026`. The version is bumped **by hand in the
-  feature PR**; the commit SHA is injected by the build. No icon library — see the gotchas below
-  for both of those, and for what the placement put at risk.
+  `⌾ ⌾ · v0.2.0` centred under the Editor's **Continue** button, the version opening on a tap to
+  `v0.2.0 · dc4f857 · 16 Sept 2026`. The version is bumped **by hand in the feature PR**; the commit
+  SHA is injected by the build. No icon library. Hovering a link takes the **byline's lime** — the
+  first time that colour is used for anything but the byline. See the gotchas below for all four.
 
 ## Stack
 
@@ -503,30 +503,38 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   while leaving its layout box at 14px, so the boxes overhang 6px each way and `gap-2` would have
   them fight over a 4px strip. A tap landing there opens whichever link won, and a tap that opens
   the **wrong account** is worse than one that misses.
-- **The colophon's `-mt-[2px]` moved to a flex ROW, and it holds only while that row is 20px tall.**
-  The −2px derived from Urbanist's metrics (see the lockup gotcha) used to sit on the byline span,
-  where nothing could disturb it. On a row, `items-center` recentres every child against the
-  tallest, so one child with a taller line box drops the byline and the derivation silently stops
-  describing the screen. A bare `<span>·</span>` inherits body 14px at line-height 1.5 — a **21px**
-  box — which is why the separators carry `text-[10px] leading-5` and must not be tidied. Note
-  `getBoundingClientRect()` on an **inline** element returns the font-metrics content area and
-  ignores `line-height` entirely, so `verify-colophon.mjs` measures the ROW (a block box whose rect
-  top *is* its box top); measuring the span would be off by exactly the 4px half-leading. Below
-  `sm` the extras stand down, and that too is measured: the colophon wants 290px and the toolbar
-  215px against the 342px a 390px header has. That header was **already 57px over budget on
-  `main`** from the 168px mark and the same toolbar — verified by stashing the branch and
-  re-measuring — so hiding them restores what the screen did rather than papering over a new
-  problem, and every target device (iPad portrait at 768 up) is above the line.
-- **The byline's 4px gap is bought with a measured `-2px`, NOT with `text-box-trim`.** Figma trims
-  the text box to cap height — its text node is 7px tall, not 20 — so its 4px is mark-bottom to
-  CAP-top, and a naive `gap-1` under a 10/20 line box renders ~10px instead. Urbanist is ascent
-  0.9em / descent 0.3em / cap 0.7em (measured through canvas `TextMetrics`, and its 7px cap matches
-  Figma's node height exactly), so half-leading is `(20 - 12) / 2 = 4`, the baseline sits at 13, and
-  the cap top lands 6px into the line box: `4 - 6 = -2`. `text-box-trim` would express this
-  directly and is what Figma emits, but it needs Safari 18.2 / Chrome 133 and this app targets an
-  iPad and a **budget Android tablet** — the one place a desktop-Chrome eyeball would have passed a
-  layout that is wrong on the real device. Font metrics belong to the font, so the -2px holds in
-  every browser; it is tied to Urbanist at 10/20 and must be re-measured if any of the three move.
+- **The colophon is in the FOOTER, and the two placements it is not are the interesting part.**
+  It began on the byline row — semantically the best home, since the author's marks belong beside
+  the author's name — and measurement killed it: the row wants 290px and EditorToolbar 215px
+  against the 342px a 390px header has, so the byline wrapped to three lines and the extras had to
+  hide below `sm`. It was then tried CENTRED in the header, which fails for a reason a screenshot
+  shows faster than prose: geometrically centred between a left lockup and a right toolbar, the
+  group reads as a third navigation item with no relationship to either, and dead centre is the
+  most prominent spot in a header after the logo — the opposite of subtle. It also needs absolute
+  positioning to centre against unequal side columns, and an absolutely-positioned element does
+  not push, so at narrow widths it would silently overlap rather than squeeze.
+  The footer buys both things back. `justify-center` under a **full-width** CTA is anchored to
+  something, and the full width means it fits at **every** viewport — nothing hides at 390px. And
+  because it no longer shares a line with the byline, the `-mt-[2px]` that buys Figma's 4px
+  mark-to-cap gap is back on the span where nothing can disturb it: the header is byte-for-byte
+  what it was before this work (`git diff e42e847` removes no line from it).
+  `verify-colophon.mjs` still checks that gap — not because this branch moves it, but so the
+  byline-row placement cannot be quietly re-attempted. **Measuring it turns on one property**: an
+  inline element's `getBoundingClientRect()` ignores `line-height` and returns the font-metrics
+  content area, which would put the cap 2px below the rect instead of 6 — but the byline is a FLEX
+  ITEM, blockified, so its rect IS its line box. That is a layout fact rather than a constant, so
+  the check asserts the rect is exactly one line box tall *before* using it; restructure the header
+  so the span is genuinely inline and that fires first, naming the reason, instead of the gap
+  reading 4px off while everything else passes.
+- **Hover on the colophon is the byline's lime, and that widens what the colour means.**
+  `hover:text-byline` rather than `hover:text-fg`, so it resolves through the same token and swaps
+  per theme (lime-300 dark, lime-700 light) — `verify-colophon.mjs` asserts the hovered link's
+  computed colour equals the byline's rather than pinning a hex, which is what stops the two
+  drifting. Worth knowing what it changes: `--color-byline` was introduced as *the byline's*
+  colour, and it is now also the app's interactive-accent colour in the Editor. It is still the
+  only non-neutral in the app, and CTAs remain `--color-accent` (plain fg/bg inversion), so the
+  monochrome direction holds — but a future "make hover lime everywhere" is now a much shorter
+  argument than it was, and that is a direction decision rather than a styling one.
 - **Speech engine = Vosk on-device**, NOT the browser Web Speech API (Safari's is broken for continuous
   use). No SharedArrayBuffer / cross-origin isolation needed.
 - **Take the mic BEFORE loading the model, never after.** `useVosk.start()` runs `startMic()` →
@@ -627,11 +635,12 @@ node scripts/verify-type-motion.mjs # one motion vocabulary + one label style ac
                                 # boundary (no server needed)
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
-node scripts/verify-colophon.mjs # the colophon does not move the logo's measured 4px gap, and its
-                                # two links do not overlap each other's tap target. Needs a dev
+node scripts/verify-colophon.mjs # the colophon hangs centred under the CTA at every width, its two
+                                # links do not overlap, hover matches the byline, and the logo's
+                                # measured 4px gap is untouched. Needs a dev
                                 # server, so like verify-preset-size it cannot ride in
-                                # `vercel-build`. RUN IT after touching the Editor header, the
-                                # byline, or anything that changes a line-height near them.
+                                # `vercel-build`. RUN IT after touching the Editor footer, the
+                                # byline, or SocialLinks/AppVersion.
 node scripts/verify-false-jump.mjs # weak evidence never sends the script somewhere the presenter
                                 # is not, and strong evidence still does (no server; ~5s, so
                                 # unlike verify-lexicon it does NOT ride in vercel-build)
