@@ -47,6 +47,11 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   repo. What changed is the styling — the mirrored **reflection is gone** (the mark is 168x19, the
   lockup 30px rather than 49), the lockup is flush LEFT, and the byline is **lime**. That lime is
   the app's first non-neutral colour and it is a token, not a literal — see the gotcha below.
+- **Colophon: build version + author's accounts — shipped** (branch `app-version-and-social-links`).
+  The byline row in the Editor header now carries `by Mateusz Wróbel · ⌾ ⌾ · v0.2.0`, the version
+  opening on a tap to `v0.2.0 · e42e847 · 16 Sept 2026`. The version is bumped **by hand in the
+  feature PR**; the commit SHA is injected by the build. No icon library — see the gotchas below
+  for both of those, and for what the placement put at risk.
 
 ## Stack
 
@@ -459,6 +464,49 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   ramp that clears 4.5:1 at 10px. Figma authored the lockup on the dark canvas only (the mark path
   fills `white`) and publishes no light variant, so the light value is this repo's, not the
   design's; it is the thing to re-check if the brand ever specifies one.
+- **The version is bumped BY HAND, and that is the honest option rather than the lazy one.** The
+  ask was "a counter that updates whenever a new feature is added," and nothing can detect a
+  feature: a commit count or SHA increments on typo fixes and README edits, and auto-semver
+  (semantic-release, changesets) needs Conventional Commits, which this repo deliberately does not
+  use — its log is prose. What makes the manual bump work is that this repo ships **one feature per
+  PR**, so the bump *is* the feature signal. Bump `package.json` in the feature PR; that is now part
+  of the convention. The **SHA answers the half the version cannot**: fixes ship between feature
+  bumps and the version does not move on those deploys, which are exactly the ones where "did the
+  tablet update?" is being asked. Why any of it is worth having: `registerType: 'autoUpdate'` with
+  **no refresh-prompt UI anywhere in `src/`** (no `virtual:pwa-register`, no `onNeedRefresh`) means
+  updates land silently, and the target devices are an iPad and a budget Android tablet with no
+  devtools to attach. Both values arrive through `define` in `vite.config.ts` → `src/buildInfo.ts`,
+  never an `import` of `package.json` (that would bundle the whole file) and never a runtime git
+  read: **`vercel-build` runs from a clean, SHALLOW clone**, so `VERCEL_GIT_COMMIT_SHA` is preferred
+  and `git rev-parse` is only the local fallback. That config is also the vitest config, so the
+  globals resolve under jsdom and the component cannot crash there — `AppVersion.test.tsx` asserts
+  against the **imported** constants, never a literal SHA, which would pass on one machine only.
+- **No icon library, and the obvious one cannot do the job anyway.** Lucide 1.0 (June 2026) removed
+  every brand icon over trademark pressure and its migration guide points at Simple Icons;
+  `react-icons` is a large dependency for two glyphs in a repo where bundle discipline is already
+  load-bearing (vosk is dynamically imported precisely to stay under workbox's 2MB precache limit).
+  This repo has **zero icon dependencies** — every icon is a hand-inlined 24×24 SVG. `SocialLinks`
+  adds two more as an array, so a third link is one line. They are **solid** (`fill`) where the
+  app's own icons are hairlines (`stroke`), which is correct rather than sloppy: a brand mark must
+  not be redrawn as a stroke, and solid reads better at 14px. `gap-3` between them is a
+  **measurement, not spacing taste** — `-m-1.5 p-1.5` grows each 14px mark to a 26px tap target
+  while leaving its layout box at 14px, so the boxes overhang 6px each way and `gap-2` would have
+  them fight over a 4px strip. A tap landing there opens whichever link won, and a tap that opens
+  the **wrong account** is worse than one that misses.
+- **The colophon's `-mt-[2px]` moved to a flex ROW, and it holds only while that row is 20px tall.**
+  The −2px derived from Urbanist's metrics (see the lockup gotcha) used to sit on the byline span,
+  where nothing could disturb it. On a row, `items-center` recentres every child against the
+  tallest, so one child with a taller line box drops the byline and the derivation silently stops
+  describing the screen. A bare `<span>·</span>` inherits body 14px at line-height 1.5 — a **21px**
+  box — which is why the separators carry `text-[10px] leading-5` and must not be tidied. Note
+  `getBoundingClientRect()` on an **inline** element returns the font-metrics content area and
+  ignores `line-height` entirely, so `verify-colophon.mjs` measures the ROW (a block box whose rect
+  top *is* its box top); measuring the span would be off by exactly the 4px half-leading. Below
+  `sm` the extras stand down, and that too is measured: the colophon wants 290px and the toolbar
+  215px against the 342px a 390px header has. That header was **already 57px over budget on
+  `main`** from the 168px mark and the same toolbar — verified by stashing the branch and
+  re-measuring — so hiding them restores what the screen did rather than papering over a new
+  problem, and every target device (iPad portrait at 768 up) is above the line.
 - **The byline's 4px gap is bought with a measured `-2px`, NOT with `text-box-trim`.** Figma trims
   the text box to cap height — its text node is 7px tall, not 20 — so its 4px is mark-bottom to
   CAP-top, and a naive `gap-1` under a 10/20 line box renders ~10px instead. Urbanist is ascent
@@ -569,6 +617,8 @@ node scripts/verify-type-motion.mjs # one motion vocabulary + one label style ac
                                 # boundary (no server needed)
 node scripts/verify-lexicon.mjs # every grammar + wake word exists in the model that must recognize
                                 # it (no server; also runs in vercel-build)
+node scripts/verify-colophon.mjs # the colophon does not move the logo's measured 4px gap, and its
+                                # two links do not overlap each other's tap target
 node scripts/verify-false-jump.mjs # weak evidence never sends the script somewhere the presenter
                                 # is not, and strong evidence still does (no server; ~5s, so
                                 # unlike verify-lexicon it does NOT ride in vercel-build)
