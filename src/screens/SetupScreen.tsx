@@ -7,6 +7,7 @@ import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Toggle } from '../components/ui/Toggle'
 import { CtaButton } from '../components/ui/CtaButton'
 import { SetupPreview } from '../components/setup/SetupPreview'
+import { VoiceCommandRow } from '../components/setup/VoiceCommandRow'
 import { useViewportSize } from '../engine/useViewportSize'
 
 export function SetupScreen() {
@@ -100,29 +101,38 @@ export function SetupScreen() {
             <AnimatePresence initial={false}>
               {settings.smartFollow && (
                 <motion.div
-                  key="language"
+                  key="smart-follow"
                   className="overflow-hidden"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ height: travel, opacity: change }}
                 >
-                  <div className="flex items-center justify-between py-3">
-                    <span className="type-label text-fg-muted">
-                      Language
-                    </span>
-                    <select
-                      value={settings.language}
-                      onChange={(e) => updateSettings({ language: e.target.value as SttLanguage })}
-                      aria-label="Smart Follow language"
-                      className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-fg"
-                    >
-                      {(Object.keys(LANGUAGE_LABELS) as SttLanguage[]).map((code) => (
-                        <option key={code} value={code}>
-                          {LANGUAGE_LABELS[code]}
-                        </option>
-                      ))}
-                    </select>
+                  {/*
+                    Both rows live inside the ONE collapsible, so Smart Follow going off takes
+                    the whole group with it in a single height animation. The stack's own
+                    `divide-y` only separates its direct children — this motion.div is one of
+                    them — so the rule between Language and Voice commands comes from here.
+                  */}
+                  <div className="divide-y divide-border">
+                    <div className="flex items-center justify-between py-3">
+                      <span className="type-label text-fg-muted">
+                        Language
+                      </span>
+                      <select
+                        value={settings.language}
+                        onChange={(e) => updateSettings({ language: e.target.value as SttLanguage })}
+                        aria-label="Smart Follow language"
+                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-fg"
+                      >
+                        {(Object.keys(LANGUAGE_LABELS) as SttLanguage[]).map((code) => (
+                          <option key={code} value={code}>
+                            {LANGUAGE_LABELS[code]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <VoiceCommandRow lang={settings.language} />
                   </div>
                 </motion.div>
               )}

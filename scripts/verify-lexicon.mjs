@@ -20,7 +20,7 @@
  * they are gitignored.  Run: node scripts/verify-lexicon.mjs
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const MODELS = {
   'pl-PL': 'public/models/vosk-model-small-pl-0.22.tar.gz',
@@ -30,6 +30,11 @@ const MODELS = {
 // Mirrors commandGrammarFor() in src/smartfollow/voiceCommands.ts. Kept as literals rather than
 // imported: this script must be able to run against a build, and the point is to catch a grammar
 // edit that nobody re-checked against the model.
+//
+// Note the blast radius grew: these phrases are now also the COPY shown to the presenter, in
+// Setup's Voice commands row, which renders the same array the recognizer is built from. So this
+// check no longer only guards what the app can hear — it guards that the app is not teaching a
+// phrase its model cannot return.
 const GRAMMAR = {
   'pl-PL': ['klik góra', 'klik dół', 'klik start', 'klik akapit'],
   'en-US': ['click up', 'click down', 'click go', 'click paragraph'],
@@ -43,11 +48,54 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures++
 }
 
+/*
+ * The literal above is only worth anything while the module still agrees with it.
+ *
+ * `voiceCommands.ts` builds the grammar from COMMAND_PHRASES in GRAMMAR_ORDER, and — because
+ * Setup's Voice commands row renders that same table — it is simultaneously the copy the presenter
+ * is taught. Node cannot import a `.ts`, so the agreement is ASSERTED by reading the source, the
+ * way verify-type-motion.mjs reads index.css against motion/tokens.ts.
+ *
+ * Without this the chain has a hole big enough to ship through: the only other thing tying the
+ * table to this literal is a unit test, and `vercel-build` runs `build`, not `vitest`. A typo in
+ * COMMAND_PHRASES would then reach the presenter as a phrase no model can return — the exact
+ * failure deriving the row from the grammar exists to make impossible.
+ *
+ * Runs BEFORE the model check below, because it needs no models: a fresh clone still gets it.
+ */
+{
+  const src = readFileSync('src/smartfollow/voiceCommands.ts', 'utf8')
+  const table = src.match(/const COMMAND_PHRASES[\s\S]*?\n\}/)?.[0] ?? ''
+  const recordFor = (key) => {
+    const body = table.match(new RegExp(`\\b${key}:\\s*\\{([^}]*)\\}`))?.[1] ?? ''
+    return Object.fromEntries(
+      [...body.matchAll(/(\w+):\s*'([^']+)'/g)].map((m) => [m[1], m[2]]),
+    )
+  }
+  const order = [
+    ...(src.match(/const GRAMMAR_ORDER[^=]*=\s*\[([^\]]*)\]/)?.[1] ?? '').matchAll(/'([^']+)'/g),
+  ].map((m) => m[1])
+
+  check(order.length === 4, 'GRAMMAR_ORDER still lists every command', order.join(', '))
+  for (const [lang, key] of [
+    ['pl-PL', 'pl'],
+    ['en-US', 'en'],
+  ]) {
+    const built = order.map((command) => recordFor(key)[command])
+    check(
+      built.join(' | ') === GRAMMAR[lang].join(' | '),
+      `${lang}: voiceCommands.ts still builds the phrases this script checks`,
+      built.join(' | ') || '(parsed nothing)',
+    )
+  }
+}
+
 const missing = Object.values(MODELS).filter((f) => !existsSync(f))
 if (missing.length > 0) {
   console.log('SKIP  Vosk models are not present (they are gitignored).')
   console.log('      Run: bash scripts/fetch-models.sh')
-  process.exit(0)
+  // Still report a source disagreement found above — that check needed no models.
+  process.exit(failures === 0 ? 0 : 1)
 }
 
 /**
