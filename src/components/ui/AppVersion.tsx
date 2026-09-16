@@ -37,7 +37,14 @@ export function AppVersion() {
       onClick={() => setOpen((o) => !o)}
       whileTap={{ scale: pressScale.icon }}
       transition={press}
-      aria-label={`Version ${APP_VERSION}, tap for build details`}
+      /*
+       * The label goes away once the detail is on screen. An `aria-label` OVERRIDES the button's
+       * content, so a static one meant a screen-reader user activated the control and heard the
+       * same name again — never the commit or the date, which is the only thing the control is
+       * for. Open, the rendered text is the better name, so there is nothing to override it with.
+       */
+      aria-label={open ? undefined : `Version ${APP_VERSION}, tap for build details`}
+      aria-expanded={open}
       /*
        * `.type-numeral` (Geist Mono) is earned here by the tap: index.css scopes that role to
        * readouts that CHANGE while being looked at, because a proportional face makes the row

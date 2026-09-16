@@ -207,7 +207,17 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
         data-placeholder="Paste or start typing…"
         onInput={handleInput}
         onPaste={handlePaste}
-        className="script-editor h-full w-full resize-none overflow-y-auto pt-[var(--editor-chrome-h)] text-2xl leading-relaxed text-fg outline-none"
+        /*
+           * `pt-` spaces the FIRST line past the glass header; `scroll-pt-` protects every other
+           * one, and without it the editor is quietly broken. The header is `absolute` over this
+           * element, so the scrollport starts at y=0 while its top 91px are permanently occluded.
+           * When the caret is above the viewport the browser scrolls it MINIMALLY into view —
+           * which means flush against the scrollport top, i.e. completely behind the bar.
+           * Measured before the fix: caret top 0, header bottom 91, so 91px of the caret hidden
+           * while typing. `scroll-padding-top` moves the browser's idea of "in view" down past
+           * the occlusion, and has no cost on a container whose top band is covered anyway.
+           */
+          className="script-editor h-full w-full resize-none overflow-y-auto pt-[var(--editor-chrome-h)] scroll-pt-[var(--editor-chrome-h)] text-2xl leading-relaxed text-fg outline-none"
       />
     )
   },

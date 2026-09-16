@@ -507,6 +507,20 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   while leaving its layout box at 14px, so the boxes overhang 6px each way and `gap-2` would have
   them fight over a 4px strip. A tap landing there opens whichever link won, and a tap that opens
   the **wrong account** is worse than one that misses.
+- **The byline's 4px gap is bought with a measured `-2px`, NOT with `text-box-trim`.** Figma trims
+  the text box to cap height — its text node is 7px tall, not 20 — so its 4px is mark-bottom to
+  CAP-top, and a naive `gap-1` under a 10/20 line box renders ~10px instead. Urbanist is ascent
+  0.9em / descent 0.3em / cap 0.7em (measured through canvas `TextMetrics`, and its 7px cap matches
+  Figma's node height exactly), so half-leading is `(20 - 12) / 2 = 4`, the baseline sits at 13, and
+  the cap top lands 6px into the line box: `4 - 6 = -2`. `text-box-trim` would express this
+  directly and is what Figma emits, but it needs Safari 18.2 / Chrome 133 and this app targets an
+  iPad and a **budget Android tablet** — the one place a desktop-Chrome eyeball would have passed a
+  layout that is wrong on the real device. Font metrics belong to the font, so the -2px holds in
+  every browser; it is tied to Urbanist at 10/20 and must be re-measured if any of the three move.
+  Still true, and still load-bearing, after the colophon moved to the footer: that move exists
+  partly so this stays the ONLY thing deciding the byline's position. `verify-colophon.mjs` now
+  carries the arithmetic as executable constants, but the two things a check cannot hold — why
+  `text-box-trim` was rejected, and the instruction to re-measure — live here.
 - **The colophon is in the FOOTER, and the two placements it is not are the interesting part.**
   It began on the byline row — semantically the best home, since the author's marks belong beside
   the author's name — and measurement killed it: the row wants 290px and EditorToolbar 215px
@@ -520,8 +534,9 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   The footer buys both things back. `justify-center` under a **full-width** CTA is anchored to
   something, and the full width means it fits at **every** viewport — nothing hides at 390px. And
   because it no longer shares a line with the byline, the `-mt-[2px]` that buys Figma's 4px
-  mark-to-cap gap is back on the span where nothing can disturb it: the header is byte-for-byte
-  what it was before this work (`git diff e42e847` removes no line from it).
+  mark-to-cap gap is back on the span where nothing can disturb it. Scope that claim to the
+  LOCKUP: the colophon move left the header markup alone, but the glass work then rebuilt it as an
+  absolutely positioned panel with an inner max-width wrapper.
   `verify-colophon.mjs` still checks that gap — not because this branch moves it, but so the
   byline-row placement cannot be quietly re-attempted. **Measuring it turns on one property**: an
   inline element's `getBoundingClientRect()` ignores `line-height` and returns the font-metrics
@@ -558,6 +573,14 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   `ScriptEditor` pays exactly one class for all this (`pt-[var(--editor-chrome-h)]`): moving the
   scrollbar to a wrapper instead — the shape SetupScreen uses — would have cost `h-full`, which is
   what makes the whole empty area clickable to focus the editor.
+- **An overlaid header needs `scroll-padding-top`, or the caret hides behind it.** `pt-` spaces the
+  FIRST line past the glass and protects nothing after it: the header is `absolute` over the
+  contenteditable, so the scrollport starts at y=0 while its top 91px are permanently occluded, and
+  a browser asked to bring the caret into view scrolls it MINIMALLY — flush to the scrollport top,
+  which is behind the bar. Measured before the fix: caret top 0 against header bottom 91, the whole
+  caret hidden while typing. `scroll-pt-[var(--editor-chrome-h)]` moves the browser's idea of "in
+  view" past the occlusion and costs nothing on a container whose top band is covered anyway. Any
+  future overlaid chrome over a scroller owes the same pairing.
 - **`--editor-chrome-h` is MEASURED, and the header's height is set by the toolbar, not the lockup.**
   The header is `items-center`, so its height is whichever child is taller — the EditorToolbar at
   54px (bordered, ~44pt targets), not the 37px lockup. Deriving it from the lockup gives 68px and is

@@ -20,11 +20,26 @@ describe('AppVersion', () => {
     expect(screen.getByRole('button')).not.toHaveTextContent(APP_COMMIT)
   })
 
-  it('names itself for screen readers without relying on the visible text', () => {
+  it('names itself for screen readers while collapsed', () => {
     render(<AppVersion />)
-    expect(
-      screen.getByRole('button', { name: `Version ${APP_VERSION}, tap for build details` }),
-    ).toBeInTheDocument()
+    const button = screen.getByRole('button', { name: `Version ${APP_VERSION}, tap for build details` })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  /*
+   * An `aria-label` overrides the button's content, so keeping the collapsed one while open would
+   * announce the same name again and never the commit or date — the only thing the control exists
+   * to give. Open, the rendered text IS the name.
+   */
+  it('announces the build once revealed, rather than repeating its own name', async () => {
+    const user = userEvent.setup()
+    render(<AppVersion />)
+
+    await user.click(screen.getByRole('button'))
+
+    const button = screen.getByRole('button')
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    expect(button).toHaveAccessibleName(expect.stringContaining(APP_COMMIT))
   })
 
   it('reveals the commit and the build date on a tap', async () => {

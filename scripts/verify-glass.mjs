@@ -151,7 +151,7 @@ for (const theme of ['dark', 'light']) {
   await page.click('.script-editor')
   await page.evaluate((t) => {
     const ed = document.querySelector('.script-editor')
-    ed.innerHTML = Array.from({ length: 40 }, () => `<p>${t}</p>`).join('')
+    ed.innerHTML = Array.from({ length: 60 }, () => `<p>${t}</p>`).join('')
     ed.dispatchEvent(new InputEvent('input', { bubbles: true }))
     ed.scrollTop = 600
   }, SCRIPT_TEXT)
@@ -170,6 +170,43 @@ for (const theme of ['dark', 'light']) {
   )
   await page.evaluate(() => { document.querySelector('.script-editor').scrollTop = 600 })
   await page.waitForTimeout(300)
+
+  // --- the caret never scrolls under the glass ------------------------------
+  // `pt-` protects the first line only. Every other line is protected by `scroll-pt-`, and
+  // without it a browser bringing the caret "into view" puts it flush against the scrollport
+  // top — which is behind the bar. Measured at 91px of caret hidden before the fix, so this
+  // drives the real failure: caret above the viewport, then a keystroke.
+  const caret = await page.evaluate(() => {
+    const ed = document.querySelector('.script-editor')
+    const target = ed.querySelectorAll('p')[19]
+    const r = document.createRange()
+    r.selectNodeContents(target)
+    r.collapse(true)
+    const sel = getSelection()
+    sel.removeAllRanges()
+    sel.addRange(r)
+    ed.scrollTop = ed.scrollHeight // the caret is now off-screen ABOVE the viewport
+    return getComputedStyle(ed).scrollPaddingTop
+  })
+  await page.keyboard.type('X') // the browser now scrolls the caret minimally into view
+  await page.waitForTimeout(250)
+  const caretPos = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.textContent = '\u200b'
+    getSelection().getRangeAt(0).cloneRange().insertNode(probe)
+    const c = probe.getBoundingClientRect()
+    const h = document.querySelector('header').getBoundingClientRect()
+    probe.remove()
+    return { hidden: +(h.bottom - c.top).toFixed(1), caretTop: +c.top.toFixed(1) }
+  })
+  check(
+    caretPos.hidden <= 0.5,
+    `${theme}: the caret never scrolls under the glass`,
+    `${caretPos.hidden}px hidden (caret top ${caretPos.caretTop}, scroll-padding-top ${caret})`,
+  )
+  // Put the scroll back where the contrast sampling expects it.
+  await page.evaluate(() => { document.querySelector('.script-editor').scrollTop = 600 })
+  await page.waitForTimeout(250)
 
   // --- hide the header's CONTENT, keep the glass painting --------------------
   const targets = await page.evaluate(() => {

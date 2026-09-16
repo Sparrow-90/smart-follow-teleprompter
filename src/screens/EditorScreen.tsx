@@ -71,6 +71,11 @@ export function EditorScreen() {
 
           `bg-bg/95` FIRST and the blur tint second — without `backdrop-filter` support the tint has
           to carry all of the contrast on its own, and the target here is a budget Android tablet.
+          The `supports-[backdrop-filter]` variant covers the -webkit- spelling too, which is not
+          obvious from the source and matters on older iPad Safari: Tailwind v4 emits the gate as
+          `@supports ((-webkit-backdrop-filter: var(--tw)) or (backdrop-filter: var(--tw)))`, so a
+          prefix-only engine still takes the 68% tint rather than getting the blur AND the opaque
+          fallback. Verified in the built CSS, not assumed.
           No bare `transition-*` utility: `@layer base` gives `body *` a transition-property list for
           the theme cross-fade and that property is REPLACED, never merged (see index.css). */}
       <header className="absolute inset-x-0 top-0 z-10 border-b border-border/50 bg-bg/95 backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-bg/68">
@@ -150,7 +155,9 @@ export function EditorScreen() {
             In the footer rather than beside the byline, and it buys two things that placement
             could not. It no longer shares a line with the byline, so the -2px above (measured off
             Urbanist's metrics to buy Figma's 4px mark-to-cap gap) is back on the span where
-            nothing can disturb it — the header is byte-for-byte what it was. And the full width
+            nothing can disturb it — the LOCKUP is untouched. (The header around it is not: the
+            glass work made it an absolutely positioned panel with an inner max-width wrapper.)
+            And the full width
             under a full-width CTA means it fits at EVERY viewport: on the byline it needed 290px
             against a 390px header's 342px, which forced it to hide below `sm`. Nothing hides here.
 
