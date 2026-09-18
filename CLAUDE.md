@@ -198,6 +198,8 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   but a blank line in it is the writer saying "new paragraph": `splitAtBlankLines` parts it there
   and each blank line becomes a marker, with no word joined or changed. A SINGLE line break never
   earns one, even in clean text — that is how lists and one-sentence-per-line scripts are written.
+  Nor does a blank line BETWEEN two list items (Markdown spaces lists out that way): those parts
+  are merged, or "Klik akapit" would step back one bullet at a time.
   The cost, chosen deliberately: sources that separate paragraphs with a single newline (Word with
   no spacing, Apple Notes) get no markers. `verify-paste.mjs` covers all three paths.
   The reflow half, as before:

@@ -153,10 +153,22 @@ export function reflowPastedText(raw: string): string {
  * Nothing is joined or rewritten: a single line break stays a line of its own and never earns a
  * marker, because that is how a list or a one-sentence-per-line script is written. A single part
  * means there was no blank line to mark, and the caller takes the untouched path.
+ *
+ * A blank line BETWEEN two list items is not a paragraph break: Markdown and chat exports often
+ * space a list out that way, and marking it would run a numbered rule through every item — the
+ * same thing the reflow's `line` break exists to prevent. Such parts are merged back into one.
  */
 export function splitAtBlankLines(raw: string): string[][] {
-  return normalize(raw)
+  const parts = normalize(raw)
     .split(PARAGRAPH)
     .map((part) => part.split(LINE).map((l) => l.trim()).filter((l) => l !== ''))
     .filter((lines) => lines.length > 0)
+
+  const merged: string[][] = []
+  for (const lines of parts) {
+    const prev = merged[merged.length - 1]
+    if (prev && BULLET.test(prev[prev.length - 1]) && BULLET.test(lines[0])) prev.push(...lines)
+    else merged.push(lines)
+  }
+  return merged
 }

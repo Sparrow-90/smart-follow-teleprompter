@@ -171,6 +171,15 @@ describe('splitAtBlankLines — a clean paste keeps its own paragraphs', () => {
     expect(splitAtBlankLines(text)).toEqual([['Sprawdź:', '- mikrofon', '- światło'], ['Zaczynamy.']])
   })
 
+  it('does not mark a blank line between two list items — a spaced-out list is still one list', () => {
+    const text = 'Checklist:\n\n- mikrofon\n\n- światło\n\n1. kamera\n\nDziękuję.'
+    expect(splitAtBlankLines(text)).toEqual([
+      ['Checklist:'],
+      ['- mikrofon', '- światło', '1. kamera'],
+      ['Dziękuję.'],
+    ])
+  })
+
   it('returns one part for text with no blank line at all', () => {
     expect(splitAtBlankLines('Jedna linia\nDruga linia\nTrzecia')).toHaveLength(1)
     expect(splitAtBlankLines('Po prostu zdanie.')).toEqual([['Po prostu zdanie.']])
