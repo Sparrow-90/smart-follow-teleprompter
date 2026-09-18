@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reflowPastedText, reflowPastedSegments } from './reflowPastedText'
+import { reflowPastedText, reflowPastedSegments, splitAtBlankLines } from './reflowPastedText'
 
 /**
  * Text copied out of a PDF carries a newline at every *visual* line ending — where the page ran
@@ -153,5 +153,41 @@ describe('reflowPastedSegments — what earns a paragraph marker', () => {
         .join('')
       expect(rejoined).toBe(reflowPastedText(input))
     }
+  })
+})
+
+describe('splitAtBlankLines — a clean paste keeps its own paragraphs', () => {
+  it('parts clean prose at each blank line', () => {
+    const text = 'Pierwszy akapit, jedno zdanie.\n\nDrugi akapit.\n\nTrzeci akapit.'
+    expect(splitAtBlankLines(text)).toEqual([
+      ['Pierwszy akapit, jedno zdanie.'],
+      ['Drugi akapit.'],
+      ['Trzeci akapit.'],
+    ])
+  })
+
+  it('keeps a single line break as a line inside its part — it never earns a marker', () => {
+    const text = 'Sprawdź:\n- mikrofon\n- światło\n\nZaczynamy.'
+    expect(splitAtBlankLines(text)).toEqual([['Sprawdź:', '- mikrofon', '- światło'], ['Zaczynamy.']])
+  })
+
+  it('returns one part for text with no blank line at all', () => {
+    expect(splitAtBlankLines('Jedna linia\nDruga linia\nTrzecia')).toHaveLength(1)
+    expect(splitAtBlankLines('Po prostu zdanie.')).toEqual([['Po prostu zdanie.']])
+  })
+
+  it('treats CRLF, runs of blank lines and whitespace-only lines as one break', () => {
+    const text = 'Raz.\r\n\r\n\r\n\r\nDwa.\n   \nTrzy.'
+    expect(splitAtBlankLines(text)).toEqual([['Raz.'], ['Dwa.'], ['Trzy.']])
+  })
+
+  it('drops leading and trailing blank lines rather than marking them', () => {
+    expect(splitAtBlankLines('\n\nRaz.\n\nDwa.\n\n\n')).toEqual([['Raz.'], ['Dwa.']])
+  })
+
+  it('never rewrites a word — only the blank lines are gone', () => {
+    const text = 'Linia z myśl-\nnikiem zostaje.\n\nDrugi.'
+    const flat = splitAtBlankLines(text).flat().join(' ')
+    expect(flat).toBe('Linia z myśl- nikiem zostaje. Drugi.')
   })
 })

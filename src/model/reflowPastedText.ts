@@ -143,3 +143,20 @@ export function reflowPastedText(raw: string): string {
     )
     .join('')
 }
+
+/**
+ * A paste that is NOT hard-wrapped — Google Docs, Word, ChatGPT, a text file — already has the
+ * paragraphs its writer gave it, and a blank line is how it says so. Parts the text at each one and
+ * hands back every part as its lines, so the paste path can put a paragraph marker where the blank
+ * line was.
+ *
+ * Nothing is joined or rewritten: a single line break stays a line of its own and never earns a
+ * marker, because that is how a list or a one-sentence-per-line script is written. A single part
+ * means there was no blank line to mark, and the caller takes the untouched path.
+ */
+export function splitAtBlankLines(raw: string): string[][] {
+  return normalize(raw)
+    .split(PARAGRAPH)
+    .map((part) => part.split(LINE).map((l) => l.trim()).filter((l) => l !== ''))
+    .filter((lines) => lines.length > 0)
+}

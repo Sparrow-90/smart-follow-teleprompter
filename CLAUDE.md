@@ -47,6 +47,9 @@ Core idea: *the teleprompter follows the presenter, not the other way around.*
   repo. What changed is the styling — the mirrored **reflection is gone** (the mark is 168x19, the
   lockup 30px rather than 49), the lockup is flush LEFT, and the byline is **lime**. That lime is
   the app's first non-neutral colour and it is a token, not a literal — see the gotcha below.
+- **Clean-paste paragraph markers — shipped** (branch `paste-paragraph-markers`). Text pasted from
+  Docs, Word or ChatGPT gets a paragraph marker at each blank line, the way a PDF paste already
+  did at its reflowed breaks. Single line breaks never get one.
 - **Colophon: build version + author's accounts — shipped** (branch `app-version-and-social-links`).
   `⌾ ⌾ · v0.2.0` centred under the Editor's **Continue** button, the version opening on a tap to
   `v0.2.0 · dc4f857 · 16 Sept 2026`. The version is bumped **by hand in the feature PR**; the commit
@@ -190,11 +193,18 @@ visual line** (`[data-w]` rect) → **SmoothFollowEngine** follow mode eases the
   apart (a CSS counter's resolved value is not readable from the DOM), so `verify-paragraph-marker.mjs`
   pins the start values at the source. The numeral also needs a **counter-flip** under Mirror; the
   rules either side are symmetric and need nothing.
-- **A paste only gets markers if it was actually reflowed, and only at PARAGRAPH breaks.**
+- **A paste gets markers at PARAGRAPH breaks only — found by the reflow, or stated by a blank
+  line.** A clean paste (Google Docs, Word, ChatGPT) is not hard-wrapped, so it is never reflowed,
+  but a blank line in it is the writer saying "new paragraph": `splitAtBlankLines` parts it there
+  and each blank line becomes a marker, with no word joined or changed. A SINGLE line break never
+  earns one, even in clean text — that is how lists and one-sentence-per-line scripts are written.
+  The cost, chosen deliberately: sources that separate paragraphs with a single newline (Word with
+  no spacing, Apple Notes) get no markers. `verify-paste.mjs` covers all three paths.
+  The reflow half, as before:
   `reflowPastedSegments` exposes what `reflowPastedText` always computed internally, and the
   `paragraph` (`\n\n`) vs `line` (`\n`) distinction is load-bearing: `line` parts list items, and
   marking those would run eleven numbered rules through a twelve-item list. When `reflowed` is
-  false the original `insertText` path runs verbatim — that bail-out is the invariant the whole
+  false and there is no blank line, the original `insertText` path runs verbatim — that bail-out is the invariant the whole
   module exists for. The marker **replaces** the blank line a paragraph break used to become; emit
   both and every paragraph gains a phantom gap. `SECTION_HTML` (bare) is the paste separator,
   `SECTION_INSERT_HTML` (with a trailing empty line for the caret) is the toolbar button's alone.
