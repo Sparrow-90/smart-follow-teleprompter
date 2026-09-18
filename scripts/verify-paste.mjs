@@ -141,8 +141,8 @@ console.log('✓ a list paste is left alone entirely — no markers run through 
 await page.getByRole('button', { name: 'Continue' }).click()
 await page.waitForTimeout(500)
 const reachedSetup = await page.getByRole('button', { name: 'Start Prompt' }).count()
-await browser.close()
 if (listState.empty !== 'false' || reachedSetup === 0) {
+  await browser.close()
   console.log(
     `\n✗ the untouched paste never reached the document model ` +
       `(data-empty=${listState.empty}, reached Setup=${reachedSetup > 0})`,
@@ -150,3 +150,64 @@ if (listState.empty !== 'false' || reachedSetup === 0) {
   process.exit(1)
 }
 console.log('✓ and it reached the document model — Setup opened from it')
+
+// --- a CLEAN paste: not hard-wrapped, but its blank lines are paragraph breaks ---------------
+// What copying out of ChatGPT, Google Docs or Word gives: each paragraph on one long line, a blank
+// line between them. It is not reflowed — nothing about the text may change — but each blank line
+// becomes a marker. The list inside the middle paragraph is parted by single newlines, which must
+// stay plain lines with no marker between them.
+const CLEAN_CLIPBOARD = [
+  'Dzień dobry, nazywam się Łukasz i dziś opowiem wam historię, która wydarzyła się naprawdę.',
+  '',
+  'Zanim zaczniemy, trzy rzeczy:',
+  '- mikrofon',
+  '- światło',
+  '',
+  'To wszystko. Zaczynamy.',
+].join('\n')
+
+await page.getByRole('button', { name: 'Back to editor' }).click()
+await page.waitForTimeout(600)
+await page.getByRole('button', { name: 'New' }).click()
+await page.waitForTimeout(400)
+await editor.click()
+await page.evaluate((text) => {
+  const el = document.querySelector('[role="textbox"][aria-label="Script"]')
+  const dt = new DataTransfer()
+  dt.setData('text/plain', text)
+  el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+}, CLEAN_CLIPBOARD)
+await page.waitForTimeout(500)
+// Typing straight after the paste must land in the script — the caret must not be stranded.
+await page.keyboard.type(' Koniec.')
+await page.waitForTimeout(400)
+
+const clean = await page.evaluate(() => {
+  const el = document.querySelector('[role="textbox"][aria-label="Script"]')
+  const blocks = [...el.childNodes].map((c) =>
+    c.nodeType === 1 && c.getAttribute('data-block') === 'section'
+      ? '§'
+      : (c.textContent ?? '').trim(),
+  )
+  return { blocks: blocks.filter((b) => b !== '') }
+})
+console.log(`\nclean paste : ${clean.blocks.map((b) => (b === '§' ? '§' : b.slice(0, 18))).join(' / ')}`)
+
+const expected = [
+  'Dzień dobry, nazywam się Łukasz i dziś opowiem wam historię, która wydarzyła się naprawdę.',
+  '§',
+  'Zanim zaczniemy, trzy rzeczy:',
+  '- mikrofon',
+  '- światło',
+  '§',
+  'To wszystko. Zaczynamy. Koniec.',
+]
+await browser.close()
+if (JSON.stringify(clean.blocks) !== JSON.stringify(expected)) {
+  console.log('\n✗ a clean paste must keep every line as written, with a marker at each blank line only')
+  console.log('  got     :', JSON.stringify(clean.blocks))
+  console.log('  expected:', JSON.stringify(expected))
+  process.exit(1)
+}
+console.log('✓ a clean paste keeps its text, gains a marker at each blank line, none inside the list,')
+console.log('  and typing after it lands in the script')

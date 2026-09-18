@@ -8,7 +8,11 @@ import {
   isEmptyDoc,
   serializeElement,
 } from '../../model/document'
-import { reflowPastedSegments, reflowPastedText } from '../../model/reflowPastedText'
+import {
+  reflowPastedSegments,
+  reflowPastedText,
+  splitAtBlankLines,
+} from '../../model/reflowPastedText'
 
 export interface ScriptEditorHandle {
   toggleBold: () => void
@@ -165,15 +169,28 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
      * wrapped line. See reflowPastedText for what it does and, more importantly, what it won't.
      *
      * A paste it *did* reflow is a document whose real paragraph breaks we now know, so each one
-     * gets a paragraph marker for free. Everything else — typed text, lists, clean prose — takes
-     * the original path untouched, which is the invariant reflowPastedText exists to protect.
+     * gets a paragraph marker for free. A clean paste (Docs, Word, ChatGPT) is not reflowed, but a
+     * BLANK LINE in it is its writer saying "new paragraph", so that becomes a marker too — and
+     * nothing else about the text changes. Whatever is left — typed text, lists, prose with no
+     * blank line — takes the original path untouched, the invariant reflowPastedText protects.
      */
     const handlePaste = (e: React.ClipboardEvent) => {
       e.preventDefault()
       const text = e.clipboardData.getData('text/plain')
       const { segments, reflowed } = reflowPastedSegments(text)
       if (!reflowed || segments.length < 2) {
-        document.execCommand('insertText', false, reflowPastedText(text))
+        const parts = reflowed ? [] : splitAtBlankLines(text)
+        if (parts.length < 2) {
+          document.execCommand('insertText', false, reflowPastedText(text))
+          return
+        }
+        // Same shape as the reflow path below: the marker REPLACES the blank line, and a single
+        // line break inside a part stays a plain line with no marker.
+        const html = parts
+          .map((lines) => lines.map((line) => `<div>${escapeHtml(line)}</div>`).join(''))
+          .join(SECTION_HTML)
+        document.execCommand('insertHTML', false, html)
+        flush()
         return
       }
       // The marker REPLACES the blank line a paragraph break used to become, rather than joining
