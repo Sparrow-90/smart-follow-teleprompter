@@ -154,7 +154,7 @@ export function useVosk({
       setErrorKind(phase === 'mic' && denied ? 'permission' : phase)
       setError(
         denied
-          ? 'Microphone permission denied — allow the mic and try again.'
+          ? 'Microphone permission denied. Allow the mic and try again.'
           : e instanceof Error
             ? e.message
             : 'Could not start the microphone.',

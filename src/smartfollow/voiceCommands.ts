@@ -155,7 +155,7 @@ const COMMAND_MEANINGS: Record<VoiceCommand, string> = {
   // they are within `toleranceWords` of it, so the first say restarts this beat and only the
   // second steps back. "back one paragraph" would send someone fumbling mid-paragraph one further
   // back than they meant.
-  paragraphBack: 'back to the start of this paragraph — again for the one before',
+  paragraphBack: 'back to the start of this paragraph, or say it twice for the one before',
 }
 
 /**

@@ -262,7 +262,7 @@ describe('voiceCommands — what the presenter is shown', () => {
   })
 
   it('still advertises the resume phrase the status chip has always shown', () => {
-    // PromptScreen interpolates this into `Paused — say "…"`, so the capitalization is part of it.
+    // PromptScreen interpolates this into `Paused · say "…"`, so the capitalization is part of it.
     expect(resumePhraseFor('pl-PL')).toBe('Klik start')
     expect(resumePhraseFor('en-US')).toBe('Click go')
   })
