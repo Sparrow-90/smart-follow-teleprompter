@@ -253,7 +253,7 @@ for (const screen of SCREENS) {
   await p.getByRole('button', { name: 'Continue' }).click()
   await sleep(400)
   const previewLabel = await p
-    .locator(`text=/Standard ${pct(TEXT_SCALE_MIN)} — Preview/`)
+    .locator(`text=/Standard ${pct(TEXT_SCALE_MIN)} · Preview/`)
     .count()
   check(previewLabel === 1, "Setup's preview names the manual size it is showing")
 

@@ -204,7 +204,7 @@ export function SetupPreview({
       />
 
       <span className="type-label absolute bottom-3 left-1/2 z-20 -translate-x-1/2 text-fg-muted">
-        {presetLabel} — Preview
+        {presetLabel} · Preview
       </span>
     </div>
   );

@@ -150,7 +150,7 @@ export function SmartFollowLabScreen() {
   const heardAgo =
     vosk.listening && lastHeardAtRef.current
       ? `${((performance.now() - lastHeardAtRef.current) / 1000).toFixed(1)}s ago`
-      : '—'
+      : '-'
 
   const reset = () => {
     setResult(null)
@@ -243,7 +243,7 @@ export function SmartFollowLabScreen() {
             <option value="pl-PL">Polski</option>
           </select>
           <span className="text-xs text-fg-muted">
-            On-device (Vosk) — private, offline, no cloud. First start downloads a ~50MB model.
+            On-device (Vosk): private, offline, no cloud. First start downloads a ~50MB model.
           </span>
         </div>
         {vosk.error && <p className="text-xs text-fg">{vosk.error}</p>}
@@ -306,9 +306,9 @@ export function SmartFollowLabScreen() {
         )}
 
         <p className="text-xs text-fg-muted">
-          matched word <span className="text-fg" data-testid="sf-index">#{result?.index ?? '—'}</span>{' '}
+          matched word <span className="text-fg" data-testid="sf-index">#{result?.index ?? '-'}</span>{' '}
           {matchedText && <span className="text-fg">“{matchedText}”</span>} · line{' '}
-          <span data-testid="sf-line">{result?.lineIndex ?? '—'}</span> · next: on-device mic → VAD →
+          <span data-testid="sf-line">{result?.lineIndex ?? '-'}</span> · next: on-device mic → VAD →
           STT (M1).
         </p>
       </div>

@@ -18,7 +18,7 @@ interface PromptChromeProps {
  * Minimal top chrome for Prompt Mode: Exit (top-left) + optional Smart Follow status (top-right).
  *
  * The status deliberately takes NEITHER type token. It is not a numeral — every value it can hold
- * is prose ("Loading model…", "Manual — allow the mic, then tap to retry", "● Following"), and in
+ * is prose ("Loading model…", "Manual · allow the mic, then tap to retry", "● Following"), and in
  * a monospace face a sentence reads as code. Nor is it a label: `type-label` is uppercase, and
  * those same sentences shouted across the top of the screen are worse than the plain text they
  * replaced. It stays sentence-case at the small size, which is what it always was.

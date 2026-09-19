@@ -17,7 +17,7 @@ interface VoiceCommandRowProps {
  * The one place the presenter can learn that voice commands exist.
  *
  * Until this row there was exactly ONE phrase named anywhere in the app — the status chip's
- * `Paused — say "Klik start"` — so the paragraph jump, the only way to reach a marker, was
+ * `Paused · say "Klik start"` — so the paragraph jump, the only way to reach a marker, was
  * advertised nowhere at all.
  *
  * Collapsed, the row still teaches two things without a tap: that spoken control exists, and that

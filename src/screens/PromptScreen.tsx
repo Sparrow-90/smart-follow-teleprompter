@@ -731,15 +731,15 @@ export function PromptScreen() {
    * What went wrong, in words the presenter can act on.
    *
    * `useVosk` has always composed a precise reason and this screen used to discard it, so a
-   * refused microphone read as the same dead end as a missing one — "Manual — mic unavailable",
+   * refused microphone read as the same dead end as a missing one — "Manual · mic unavailable",
    * with no hint that a permission prompt was waiting to be answered.
    */
   const sfFailureLabel =
     sfFailure === 'model'
-      ? 'Manual — speech model unavailable · tap to retry'
+      ? 'Manual · speech model unavailable · tap to retry'
       : sfFailure === 'permission'
-        ? 'Manual — allow the mic, then tap to retry'
-        : 'Manual — mic unavailable · tap to retry'
+        ? 'Manual · allow the mic, then tap to retry'
+        : 'Manual · mic unavailable · tap to retry'
 
   const sfStatusLabel =
     settings.smartFollow && sfFailure
@@ -751,7 +751,7 @@ export function PromptScreen() {
           : !sf.listening
             ? 'Smart Follow'
             : !sf.following
-              ? `Paused — say "${resumePhraseFor(settings.language)}"`
+              ? `Paused · say "${resumePhraseFor(settings.language)}"`
               : sf.status === 'finding'
                 ? 'Finding your place…'
                 : sf.status === 'paused'
